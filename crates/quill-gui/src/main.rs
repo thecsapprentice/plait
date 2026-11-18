@@ -36,7 +36,9 @@ fn setup() -> anyhow::Result<(VirtualDom, dioxus_desktop::Config, tokio::runtime
     let vault = OsKeychain::new()
         .ok()
         .map(|k| Arc::new(k) as Arc<dyn Vault>);
-    let backend = NativeBackend::new(Paths::default_paths()?, vault, runtime.handle().clone())?;
+    let paths = Paths::default_paths()?;
+    let webview = paths.webview.clone();
+    let backend = NativeBackend::new(paths, vault, runtime.handle().clone())?;
 
     let dom = VirtualDom::new(Root);
     dom.provide_root_context(Ui(Rc::new(backend)));
@@ -48,6 +50,7 @@ fn setup() -> anyhow::Result<(VirtualDom, dioxus_desktop::Config, tokio::runtime
     };
     let config = dioxus_desktop::Config::new()
         .with_menu(None)
+        .with_data_directory(webview)
         .with_custom_head(format!("<style>{STYLE}</style>"))
         .with_background_color((238, 241, 244, 255))
         .with_window(
