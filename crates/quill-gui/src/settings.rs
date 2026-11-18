@@ -16,6 +16,9 @@ pub const DIR_ENV: &str = "QUILL_GUI_DIR";
 pub struct Paths {
     pub settings: PathBuf,
     pub default_stores: PathBuf,
+    /// The webview's own data (WebView2 on Windows). Kept per folder:
+    /// WebView2 won't start a second app on a folder already in use.
+    pub webview: PathBuf,
 }
 
 impl Paths {
@@ -29,6 +32,7 @@ impl Paths {
         Ok(Self {
             settings: dirs.config_dir().join("settings.json"),
             default_stores: dirs.data_dir().join("stores"),
+            webview: dirs.data_local_dir().join("webview"),
         })
     }
 
@@ -37,6 +41,7 @@ impl Paths {
         Self {
             settings: dir.join("settings.json"),
             default_stores: dir.join("stores"),
+            webview: dir.join("webview"),
         }
     }
 }
@@ -134,6 +139,18 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    /// Found by hand (#92): two windows with different folders shared one
+    /// WebView2 data folder on Windows, and the second failed to start.
+    #[test]
+    fn each_folder_has_its_own_webview_data() {
+        let (a, b) = (
+            Paths::in_dir(Path::new("one")),
+            Paths::in_dir(Path::new("two")),
+        );
+        assert_eq!(a.webview, Path::new("one").join("webview"));
+        assert_ne!(a.webview, b.webview);
+    }
 
     #[test]
     fn settings_round_trip_and_start_empty() {
