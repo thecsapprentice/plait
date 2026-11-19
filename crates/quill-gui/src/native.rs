@@ -264,13 +264,12 @@ fn standing(s: sessions::Standing) -> SessionStanding {
     }
 }
 
-fn channel_view(c: &history::ChannelInfo, drafted: &[String]) -> ChannelView {
+fn channel_view(c: &history::ChannelInfo) -> ChannelView {
     ChannelView {
         name: c.name.clone(),
         summary: c.summary.clone(),
         notes: c.notes,
         unseen: c.unseen,
-        drafted: drafted.contains(&c.name),
     }
 }
 
@@ -1668,8 +1667,6 @@ impl Backend for NativeBackend {
                         .collect::<Vec<_>>();
                     let latest = notes.last().map(|n| n.at);
                     let opened = history::opened(store, &gid)?;
-                    let drafted = drafts::drafted(store, &gid)?;
-                    let queued = drafts::queued(store, &gid)?;
                     Ok(SessionView {
                         summary: summary(
                             s,
@@ -1679,11 +1676,10 @@ impl Backend for NativeBackend {
                             latest,
                             opened,
                         ),
-                        channels: channels.iter().map(|c| channel_view(c, &drafted)).collect(),
+                        channels: channels.iter().map(channel_view).collect(),
                         notes,
                         held_back: !reading.gaps.is_empty(),
                         history_missing: reading.history_missing.is_some(),
-                        queued: queued.into_iter().map(queued_note).collect(),
                     })
                 };
                 work.await.map_err(|e| problem(&name, e))
@@ -1713,6 +1709,18 @@ impl Backend for NativeBackend {
             text: d.text,
             reply_to: d.reply_to,
         })
+    }
+
+    fn drafted(&self, id: &str) -> Result<Vec<String>, Problem> {
+        let open = self.opened()?;
+        drafts::drafted(&open.store, &session_gid(id)?).map_err(|e| problem(&open.name, e))
+    }
+
+    fn waiting(&self, id: &str) -> Result<Vec<QueuedNote>, Problem> {
+        let open = self.opened()?;
+        let q =
+            drafts::queued(&open.store, &session_gid(id)?).map_err(|e| problem(&open.name, e))?;
+        Ok(q.into_iter().map(queued_note).collect())
     }
 
     fn save_draft(&self, id: &str, channel: &str, draft: &Draft) -> Result<(), Problem> {

@@ -324,6 +324,12 @@ impl Backend for Fake {
     fn draft(&self, _: &str, _: &str) -> Result<crate::backend::Draft, Problem> {
         Ok(crate::backend::Draft::default())
     }
+    fn drafted(&self, _: &str) -> Result<Vec<String>, Problem> {
+        Ok(Vec::new())
+    }
+    fn waiting(&self, _: &str) -> Result<Vec<crate::backend::QueuedNote>, Problem> {
+        Ok(Vec::new())
+    }
     fn save_draft(&self, _: &str, _: &str, _: &crate::backend::Draft) -> Result<(), Problem> {
         Ok(())
     }

@@ -449,8 +449,6 @@ pub struct ChannelView {
     pub summary: Option<String>,
     pub notes: usize,
     pub unseen: usize,
-    /// A draft is kept for it on this computer.
-    pub drafted: bool,
 }
 
 /// A note being written in one channel, kept on this computer as it's typed.
@@ -514,8 +512,6 @@ pub struct SessionView {
     pub held_back: bool,
     /// Part of the session's history isn't on this computer yet.
     pub history_missing: bool,
-    /// Notes written here that haven't gone yet, oldest first.
-    pub queued: Vec<QueuedNote>,
 }
 
 /// The longest device name, in characters (as `quill-core` allows).
@@ -704,6 +700,12 @@ pub trait Backend {
     fn mark_opened(&self, id: &str) -> Result<(), Problem>;
     /// The draft kept on this computer for a channel; empty if none.
     fn draft(&self, id: &str, channel: &str) -> Result<Draft, Problem>;
+    /// The channels with a draft on this computer. Local, so it works
+    /// offline.
+    fn drafted(&self, id: &str) -> Result<Vec<String>, Problem>;
+    /// The notes written here that haven't gone yet, oldest first. Local,
+    /// so they show offline.
+    fn waiting(&self, id: &str) -> Result<Vec<QueuedNote>, Problem>;
     /// Keeps a channel's draft on this computer, encrypted; an empty one is
     /// removed. Called as the writer types.
     fn save_draft(&self, id: &str, channel: &str, draft: &Draft) -> Result<(), Problem>;

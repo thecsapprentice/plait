@@ -916,6 +916,14 @@ impl Backend for Sim {
         self.sim_draft(id, channel)
     }
 
+    fn drafted(&self, id: &str) -> Result<Vec<String>, Problem> {
+        self.sim_drafted(id)
+    }
+
+    fn waiting(&self, id: &str) -> Result<Vec<crate::backend::QueuedNote>, Problem> {
+        self.sim_waiting_notes(id)
+    }
+
     fn save_draft(
         &self,
         id: &str,

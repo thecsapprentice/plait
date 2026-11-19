@@ -342,7 +342,6 @@ impl Sim {
                 ChannelView {
                     notes: mine.clone().count(),
                     unseen: mine.filter(|n| n.author != me && n.seq > shown).count(),
-                    drafted: here.drafts.contains_key(&(s.id.clone(), name.clone())),
                     name,
                     summary,
                 }
@@ -429,12 +428,6 @@ impl Sim {
             notes,
             held_back: false,
             history_missing: false,
-            queued: here
-                .queued
-                .iter()
-                .filter(|(sid, _)| sid == id)
-                .map(|(_, q)| q.clone())
-                .collect(),
         })
     }
 
@@ -464,6 +457,28 @@ impl Sim {
             .get(&(id.to_owned(), channel.to_owned()))
             .cloned()
             .unwrap_or_default())
+    }
+
+    pub(super) fn sim_drafted(&self, id: &str) -> Result<Vec<String>, Problem> {
+        let mut out: Vec<String> = self
+            .sessions_here()
+            .drafts
+            .keys()
+            .filter(|(s, _)| s == id)
+            .map(|(_, c)| c.clone())
+            .collect();
+        out.sort();
+        Ok(out)
+    }
+
+    pub(super) fn sim_waiting_notes(&self, id: &str) -> Result<Vec<QueuedNote>, Problem> {
+        Ok(self
+            .sessions_here()
+            .queued
+            .into_iter()
+            .filter(|(s, _)| s == id)
+            .map(|(_, q)| q)
+            .collect())
     }
 
     pub(super) fn sim_save_draft(&self, id: &str, channel: &str, d: &Draft) -> Result<(), Problem> {
