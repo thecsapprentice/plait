@@ -19,9 +19,6 @@ use crate::{
     markdown::Markdown,
 };
 
-/// Above this many characters a note is written with the plain text area
-/// and a preview, not Live, which falls behind on long notes (finding 5).
-pub(crate) const LIVE_MAX: usize = 12_000;
 /// How often (ms) the preview catches up and the draft is saved.
 const TICK_MS: u64 = 300;
 /// The limit is said once this close to it.
@@ -163,14 +160,9 @@ pub fn Composer(
     // Bumped when the app replaces the text (sending, a shortcut): the text
     // area remounts with the new text.
     let mut generation = use_signal(|| 0u64);
-    let mut form = use_signal(|| {
-        if text.peek().chars().count() > LIVE_MAX {
-            Form::Preview
-        } else {
-            Form::Live
-        }
-    });
-    let mut show_preview = use_signal(|| false);
+    // The writer chooses the form; it never changes by itself (a switch
+    // mid-paste remounted the editor at its starting size).
+    let mut form = use_signal(|| Form::Live);
     let mut preview = use_signal(String::new);
     let mut sending = use_signal(|| false);
     let mut said = use_signal(|| None::<Said>);
@@ -228,7 +220,7 @@ pub fn Composer(
             loop {
                 b.sleep(TICK_MS).await;
                 save();
-                if *show_preview.peek() && *preview.peek() != *text.peek() {
+                if *form.peek() == Form::Preview && *preview.peek() != *text.peek() {
                     preview.set(text.peek().clone());
                 }
             }
@@ -349,13 +341,7 @@ pub fn Composer(
         }
     };
     let on_input = move |e: FormEvent| {
-        let v = e.value();
-        // A note grown too long for Live moves to the plain text area.
-        if *form.peek() == Form::Live && v.chars().count() > LIVE_MAX {
-            form.set(Form::Preview);
-            *generation.write() += 1;
-        }
-        text.set(v);
+        text.set(e.value());
         dirty.set(true);
         // "Sent." was about the last note; this is a new one.
         if matches!(*said.peek(), Some(Said::Sent)) {
@@ -410,7 +396,7 @@ pub fn Composer(
                     }
                 }
             } else {
-                div { class: if show_preview() { "split" } else { "split single" },
+                div { class: "split",
                     for k in [key.clone()] {
                         textarea {
                             key: "{k}",
@@ -427,9 +413,7 @@ pub fn Composer(
                             onmounted: mounted,
                         }
                     }
-                    if show_preview() {
-                        div { class: "preview pitch", aria_label: "Preview", Markdown { source: preview() } }
-                    }
+                    div { class: "preview pitch", aria_label: "Preview", Markdown { source: preview() } }
                 }
             }
             div { class: "composer-bar",
@@ -454,31 +438,16 @@ pub fn Composer(
                         button {
                             class: "quiet",
                             onclick: move |_| {
-                                form.set(Form::Preview);
-                                show_preview.set(true);
                                 preview.set(text.peek().clone());
+                                form.set(Form::Preview);
                             },
                             "Write and preview"
                         }
                     } else {
                         button {
                             class: "quiet",
-                            aria_pressed: if show_preview() { "true" } else { "false" },
-                            onclick: move |_| {
-                                preview.set(text.peek().clone());
-                                show_preview.toggle();
-                            },
-                            if show_preview() { "Hide preview" } else { "Show preview" }
-                        }
-                        if chars <= LIVE_MAX {
-                            button {
-                                class: "quiet",
-                                onclick: move |_| {
-                                    form.set(Form::Live);
-                                    show_preview.set(false);
-                                },
-                                "Write in place"
-                            }
+                            onclick: move |_| form.set(Form::Live),
+                            "Write in place"
                         }
                     }
                 }

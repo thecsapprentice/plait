@@ -230,24 +230,31 @@ async fn a_refused_note_waits_with_why() {
 }
 
 #[tokio::test]
-async fn the_limit_is_said_and_a_long_note_gets_the_plain_editor() {
+async fn the_limit_is_said_and_the_editor_stays_as_chosen() {
     let sim = sim();
     let (mut d, _) = reading(&sim).await;
+    // Found by hand: a long paste switched the editor to Write and preview
+    // by itself, which also snapped it back to its starting size. The
+    // writer chooses the editor; a long note stays where it is.
     d.type_into(EDITOR, &"word ".repeat(NOTE_MAX / 5 + 1)).await;
     d.wait_for_text("5 characters over the limit of 20,000")
         .await;
     assert!(d.button_disabled("Send"));
-    // Too long for Live: the plain text area, with a preview to hand.
-    assert!(d.has_button("Show preview"));
-    assert!(!d.has_button("Write in place"));
+    assert!(d.has_element_with_class("live"), "still Live");
+    assert!(d.has_button("Write and preview"));
     d.type_into(EDITOR, "Short **again**.").await;
     assert!(!d.has_text("over the limit"));
     assert!(!d.button_disabled("Send"));
-    d.click("Show preview").await;
+
+    // Found by hand: Write and preview had "Hide preview" and "Write in
+    // place", which did the same. One button goes back.
+    d.click("Write and preview").await;
     a_moment(&mut d).await;
     assert!(d.has_text("Short again ."));
+    assert!(!d.has_button("Hide preview") && !d.has_button("Show preview"));
     d.click("Write in place").await;
-    assert!(d.has_button("Write and preview"));
+    assert!(d.has_element_with_class("live"));
+    assert_eq!(d.attr(EDITOR, "value").as_deref(), Some("Short **again**."));
 }
 
 #[tokio::test]
