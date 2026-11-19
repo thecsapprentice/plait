@@ -206,7 +206,7 @@ checked and on what.
 | Screen reader: notes read, the editor named, everything reachable by keyboard | Narrator or NVDA | VoiceOver | Orca | | | |
 | Resizing narrow to wide | | | yes, with the restyle caveat | | | |
 | Typing at the end of the long draft feels smooth | | | software rendering: see 5 | | | |
-| The app's editor (3f-2) at its 20,000-character limit: Live to 12,000, then Write and preview; typing keeps up | | | | | | |
+| The app's editor (3f-2) at its 20,000-character limit: Live throughout (the writer chooses Write and preview); typing keeps up | | | | | | |
 | Preview list markers in the app's Write and preview (finding 10) | | | | | | |
 | Adding an image by button and by dropping | | | | | | |
 | Look and colours, light and dark | | | light only | | | |
