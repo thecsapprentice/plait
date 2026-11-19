@@ -675,9 +675,34 @@ impl NativeBackend {
             let open = open?;
             let name = open.name.clone();
             self.run(async move {
-                work(open.store, open.client)
+                // Requests join, add to and drop MLS groups: one at a time
+                // with upkeep and sessions, as all such work is.
+                let _group = open.exclusive().await;
+                work(open.store.clone(), open.client.clone())
                     .await
                     .map_err(|e| request_problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    /// Like `call_with_store`, one at a time with the server's other MLS
+    /// work (`Open::exclusive`).
+    fn call_locked<'a, T, F, Fut>(&'a self, work: F) -> Call<'a, T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Arc<Store>, Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, CoreError>> + Send + 'static,
+    {
+        let open = self.opened();
+        Box::pin(async move {
+            let open = open?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                work(open.store.clone(), open.client.clone())
+                    .await
+                    .map_err(|e| problem(&name, e))
             })
             .await
         })
@@ -1416,6 +1441,7 @@ impl Backend for NativeBackend {
             let open = self.opened()?;
             let name = open.name.clone();
             self.run(async move {
+                let _group = open.exclusive().await;
                 let work = async {
                     let client = &open.client;
                     let me = client
@@ -1507,7 +1533,9 @@ impl Backend for NativeBackend {
     }
 
     fn inbox(&self, prompt: Uuid, held: bool) -> Call<'_, Inbox> {
-        self.call_with_store(move |store, client| async move {
+        // Reading a new request joins its group, using up this device's
+        // KeyPackage: two reads at once would find it gone (#29, 3f-2).
+        self.call_locked(move |store, client| async move {
             let inbox = requests::inbox(&store, &client, prompt, held).await?;
             Ok(Inbox {
                 held: inbox.held,

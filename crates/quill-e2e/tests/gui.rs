@@ -882,3 +882,66 @@ async fn approving_while_upkeep_runs_still_links() {
     }
     server.stop().await.unwrap();
 }
+
+/// Found by the 3f-2 flows under load: two reads of a prompt's requests at
+/// once (the queue loading as a live notice reloads it) both tried to join
+/// a new request's group. The first used up this device's KeyPackage, so
+/// the second found none and called the request "not sent here".
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reading_requests_while_they_are_read_still_reads_them() {
+    use quill_core::{keys, requests};
+    use quill_proto::board::{CreatePrompt, Maturity};
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (dir, vault) = (tempfile::tempdir().unwrap(), keychain());
+    let app = backend(dir.path(), &vault);
+    app.add_server(&server.url(), None).await.unwrap();
+    app.register("ink", PASSWORD, None).await.unwrap();
+    let fox = app.create_persona("ink_fox", "").await.unwrap();
+    app.prepare(fox.id, &|_| {}).await.unwrap();
+
+    let wren_c = server.account("wren").await.unwrap();
+    let wren = wren_c
+        .create_persona(&quill_proto::api::CreatePersona {
+            handle: "wren_pen".into(),
+            display_name: None,
+            summary: None,
+        })
+        .await
+        .unwrap();
+    let wren_s = quill_core::Store::in_memory();
+    keys::init(&wren_s, &wren_c, &wren, false).await.unwrap();
+    keys::publish(&wren_s, &wren_c, &wren, 5).await.unwrap();
+
+    for round in 0..6 {
+        let prompt = app
+            .create_prompt(CreatePrompt {
+                persona: fox.id,
+                title: format!("The night porter {round}"),
+                body: "A hotel with one more floor than the lift admits.".into(),
+                maturity: Maturity::General,
+                tags: Vec::new(),
+                state: None,
+            })
+            .await
+            .unwrap();
+        requests::send(&wren_s, &wren_c, &wren, prompt.id, "Porters know.", None)
+            .await
+            .unwrap();
+        let (a, b, c) = tokio::join!(
+            app.inbox(prompt.id, false),
+            app.inbox(prompt.id, false),
+            app.upkeep(),
+        );
+        c.unwrap();
+        for inbox in [a.unwrap(), b.unwrap()] {
+            assert_eq!(
+                inbox.requests[0].pitch.as_deref(),
+                Ok("Porters know."),
+                "round {round}"
+            );
+        }
+    }
+    server.stop().await.unwrap();
+}
