@@ -67,7 +67,7 @@ version = "0.6.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.ammonia]]
-version = "4.2.4"
+version = "4.2.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.anstream]]
