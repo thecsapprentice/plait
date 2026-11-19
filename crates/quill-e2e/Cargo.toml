@@ -12,8 +12,12 @@ repository.workspace = true
 quill-core.workspace = true
 quill-proto.workspace = true
 quill-server.workspace = true
+# For `quill-seed-sessions`, which makes app windows' stores (#100).
+quill-gui.workspace = true
+quill-ui.workspace = true
 
 anyhow.workspace = true
+clap.workspace = true
 axum.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
@@ -27,8 +31,7 @@ reqwest = { workspace = true, features = ["rustls"] }
 url.workspace = true
 serde_json.workspace = true
 tracing-subscriber.workspace = true
-# The desktop app's native backend (3b), without its window.
-quill-gui.workspace = true
+# The desktop app driven by its test driver, without its window.
 quill-ui = { workspace = true, features = ["testing"] }
 tempfile = "3"
 # Checks the server's answers against the OpenAPI file.

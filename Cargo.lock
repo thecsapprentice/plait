@@ -5858,6 +5858,7 @@ dependencies = [
  "anyhow",
  "axum",
  "boon",
+ "clap",
  "ed25519-dalek",
  "quill-certs",
  "quill-core",
