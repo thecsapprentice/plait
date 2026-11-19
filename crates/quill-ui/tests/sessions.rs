@@ -323,11 +323,15 @@ async fn accepting_a_request_on_your_prompt_starts_a_session() {
     d.wait_for_text("A request is waiting").await;
     d.click("Read them").await;
     d.wait_for_text("Let me write the").await;
+    // Found by e2e: a click before the list reloads opened the list, not
+    // the session. Hold the list back to click first.
+    sim.hold_sessions();
     d.click("Accept").await;
     d.wait_for_text("Accepted @wren's request").await;
     assert_eq!(sim.sessions_of(SERVER, "ink").len(), 1);
     // Accepting leads to the session it began.
     d.click("Open the session").await;
+    sim.release_sessions();
     d.wait_for_text("Writing with @wren").await;
     // The pitch opened Planning, from @wren: unread until shown.
     d.click("Planning 1 unread").await;

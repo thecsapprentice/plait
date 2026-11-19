@@ -121,6 +121,8 @@ struct State {
     clock: Rc<tokio::sync::Notify>,
     /// The server's live notices for the open login (a request arrived).
     live: Rc<tokio::sync::Notify>,
+    /// While set, loading the session list waits for it (a slow network).
+    sessions_held: Option<Rc<tokio::sync::Notify>>,
     settings: AppSettings,
 }
 
@@ -149,6 +151,7 @@ impl Sim {
             keychain: true,
             clock: Rc::default(),
             live: Rc::default(),
+            sessions_held: None,
             settings: AppSettings {
                 theme: Theme::System,
                 text_size: 100,
@@ -175,6 +178,19 @@ impl Sim {
     pub fn without_keychain(self) -> Self {
         self.0.borrow_mut().keychain = false;
         self
+    }
+
+    /// Loading the session list waits from now until `release_sessions`,
+    /// as on a slow network: for clicks that come before a list arrives.
+    pub fn hold_sessions(&self) {
+        self.0.borrow_mut().sessions_held = Some(Rc::default());
+    }
+
+    /// Session lists held by `hold_sessions` arrive, and later ones don't wait.
+    pub fn release_sessions(&self) {
+        if let Some(n) = self.0.borrow_mut().sessions_held.take() {
+            n.notify_waiters();
+        }
     }
 
     /// Every wait of a minute or more (periodic checks, upkeep) ends now,
@@ -870,7 +886,13 @@ impl Backend for Sim {
     }
 
     fn sessions(&self) -> Call<'_, Vec<crate::backend::SessionSummary>> {
-        now(self.sim_sessions())
+        let held = self.0.borrow().sessions_held.clone();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            now(self.sim_sessions()).await
+        })
     }
 
     fn session<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::SessionView> {

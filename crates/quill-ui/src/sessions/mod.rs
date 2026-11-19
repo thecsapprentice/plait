@@ -220,7 +220,26 @@ pub fn OpenSession(
                 if let Some(f) = &on_open {
                     f.call(());
                 }
-                model.write().open_sessions(found.clone());
+                if found.is_some() {
+                    model.write().open_sessions(found.clone());
+                    return;
+                }
+                // Clicked before the list has it: read the list, then open
+                // the session, or the list if this computer hasn't it yet.
+                let (b, me, partner) = (backend.clone(), me.clone(), partner.clone());
+                spawn(async move {
+                    let server = model.peek().current;
+                    if let Some(server) = server {
+                        let _ = load(b.as_ref(), model, server).await;
+                    }
+                    let found = begun_from(
+                        &model.peek().sessions.list,
+                        prompt,
+                        me.as_deref(),
+                        partner.as_deref(),
+                    );
+                    model.write().open_sessions(found);
+                });
             },
             "Open the session"
         }
