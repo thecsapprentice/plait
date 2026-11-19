@@ -40,6 +40,9 @@ pub fn SessionPage(id: String) -> Element {
     let mut notes_el = use_signal(HashMap::<u64, Rc<MountedData>>::new);
     // Each channel's label, to move focus with the arrow keys.
     let mut tabs_el = use_signal(HashMap::<String, Rc<MountedData>>::new);
+    // The label the arrow keys moved focus to: the webview doesn't ring
+    // focus moved from code, so it carries `is-focus` until a click or blur.
+    let mut key_focus = use_signal(|| None::<String>);
 
     // Read again on each load of the list (a note arrived, live).
     let b = backend.clone();
@@ -208,7 +211,8 @@ pub fn SessionPage(id: String) -> Element {
                 for c in v.channels.iter().cloned() {
                     button {
                         key: "{c.name}",
-                        class: "channel-tab-{c.name}",
+                        class: if key_focus().as_deref() == Some(c.name.as_str()) { "channel-tab-{c.name} is-focus" } else { "channel-tab-{c.name}" },
+                        id: "channel-tab-{c.name}",
                         role: "tab",
                         aria_selected: if c.name == current { "true" } else { "false" },
                         // Only the shown channel is a Tab stop; arrows do the rest.
@@ -221,7 +225,18 @@ pub fn SessionPage(id: String) -> Element {
                         },
                         onclick: {
                             let name = c.name.clone();
-                            move |_| channel.set(name.clone())
+                            move |_| {
+                                key_focus.set(None);
+                                channel.set(name.clone());
+                            }
+                        },
+                        onblur: {
+                            let name = c.name.clone();
+                            move |_| {
+                                if key_focus.peek().as_deref() == Some(name.as_str()) {
+                                    key_focus.set(None);
+                                }
+                            }
                         },
                         onkeydown: {
                             let name = c.name.clone();
@@ -230,6 +245,7 @@ pub fn SessionPage(id: String) -> Element {
                                 if let Some(to) = step(&name, e.key()) {
                                     e.prevent_default();
                                     channel.set(to.clone());
+                                    key_focus.set(Some(to.clone()));
                                     if let Some(el) = tabs_el.peek().get(&to).cloned() {
                                         spawn(async move {
                                             let _ = el.set_focus(true).await;

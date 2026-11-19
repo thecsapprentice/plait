@@ -242,6 +242,14 @@ async fn channels_list_down_the_side_and_the_arrow_keys_move_between_them() {
     d.press("Story", Key::ArrowDown).await;
     d.wait_for_text("Shall we keep it short?").await;
     assert_eq!(d.asked_of("channel-tab-planning"), [Asked::Focus]);
+    // Found by hand: the webview doesn't ring focus moved from code, so
+    // the label says it has keyboard focus itself, until a click.
+    let ringed = |d: &Driver, name: &str| {
+        d.attr(&format!("channel-tab-{name}"), "class")
+            .is_some_and(|c| c.split_whitespace().any(|w| w == "is-focus"))
+    };
+    assert!(ringed(&d, "planning"));
+    assert!(!ringed(&d, "story"));
     d.press("Planning", Key::ArrowDown).await;
     d.wait_for_text("Tide tables for 1890.").await;
     // Up goes back; it wraps from the top to the bottom.
@@ -251,6 +259,8 @@ async fn channels_list_down_the_side_and_the_arrow_keys_move_between_them() {
     d.wait_for_text("Nothing in Story yet.").await;
     d.press("Story", Key::ArrowUp).await;
     d.wait_for_text("Tide tables for 1890.").await;
+    d.click("Story").await;
+    assert!(!ringed(&d, "research") && !ringed(&d, "story"));
 }
 
 #[tokio::test]

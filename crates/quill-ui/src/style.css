@@ -465,9 +465,13 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .key-check { max-width: var(--width-read); }
 /* Compare words: a small panel off to the right of a request or prompt,
    with a hint on hover or focus. Below it on a narrow window. */
-.item.request, .reader-actions { display: flow-root; }
+.item.request { display: flow-root; }
+.with-aside { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.with-aside > .actions { margin-top: 0; }
+.with-aside > .compare-words { float: none; margin: 0; flex: 0 1 15rem; }
 .compare-words { float: right; clear: right; width: 15rem; margin: 0 0 var(--space-2) var(--space-4); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--paper); font-size: var(--text-sm); }
 .compare-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.compare-head .link { text-align: left; }
 .compare-words .hint { font-size: var(--text-xs); }
 .compare-words .words { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-3); margin: var(--space-2) 0 0; font-size: var(--text-sm); }
 .info { position: relative; display: inline-flex; }
@@ -477,6 +481,7 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .info:hover .tip, .info:focus-within .tip { display: block; }
 @media (max-width: 760px) {
   .compare-words { float: none; width: auto; margin: var(--space-2) 0; }
+  .with-aside > .compare-words { flex-basis: 100%; }
 }
 .key-check .words, .words {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
