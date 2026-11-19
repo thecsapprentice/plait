@@ -655,6 +655,16 @@ Dioxus desktop runs the app in native Rust and sends DOM changes to the webview,
 - **Removal is learned at upkeep.** Another device's removal arrives as a device-group commit, so this computer learns it at catch-up. The keys go then, and upkeep reports it. The frame then reloads where the login stands, so the personas show as elsewhere, and the keys-elsewhere screen says the computer was removed rather than new.
 - **Starting over is a last resort.** A persona whose keys are on an unreachable device can get a new identity key here (`keys init --replace`). This sits behind a warning that its other devices stop working for it and other writers are told the key changed. Linking is always offered first.
 
+### Seeding requests and sessions (#100)
+
+`scripts/dev-gui.py` opens its windows full of requests and sessions, so screens can be judged with a realistic amount on them.
+
+- **Why it isn't in `quill-seed`.** The board seed writes to the database. Requests and sessions are end-to-end encrypted, and a session's keys live only on its writers' devices, so the server can't be seeded with them. `quill-seed-sessions` (in `quill-e2e`, since it needs both quill-core and the app's backend, and must stay out of the Docker image) signs in as the demo writers and acts everything out against the running server.
+- **Finding the writers.** `quill-seed` picks demo logins at random, and the API has no way to list accounts. `quill-seed --cast` prints `QUILL_CAST login handle…` lines, which the script captures and passes on.
+- **The windows.** Each window's writer gets a store made by the app's own backend (adding the server, signing in, preparing every persona), so it's exactly what the app would make. The seeder then reopens that store to act. It uses the OS keychain like the app, or a printed passphrase where there's none. The other writers' devices are in memory and gone when it finishes.
+- **What's acted out.** For each window's writer: requests they sent that are waiting, accepted, declined and withdrawn; requests to them that are waiting, accepted and declined. Sessions: a long one with every channel, a named channel, an answer, an edit and a deletion, read up to its last two story notes; one never opened; one the other writer left. With two windows, they share a session and each has a request from the other to answer live.
+- **Dates.** Everything happens as the seeder runs, so requests and notes are all dated now. Spreading them out would mean rewriting times on the server and inside encrypted notes, which isn't worth it for a dev tool.
+
 ### Reading sessions in the desktop app (3f-1)
 
 - **Compare words sits to the side (#98).** On a request it's a small panel floated beside the pitch; on a prompt, where the pane is narrow, it shares a row with the ask button and wraps under it. A "What is this?" hint shows on hover or keyboard focus and is the button's description for screen readers.

@@ -71,6 +71,7 @@ close the window, it stops the server and deletes its database.
 python scripts/dev-gui.py                   # server on localhost:8090, then the GUI
 python scripts/dev-gui.py --rules on-join   # sign-up asks to accept server rules
 python scripts/dev-gui.py --guis 2          # two windows, to try two accounts at once
+python scripts/dev-gui.py --no-sessions     # no demo requests or sessions; first run
 python scripts/dev-gui.py --help            # the other options
 ```
 
@@ -79,9 +80,16 @@ so the database from `docker compose up` above is left alone. In the GUI,
 type `localhost:8090` as the server, then make a login or sign in as one of
 the demo accounts it lists.
 
+Each window opens signed in as a demo writer, with requests and sessions
+already acted out: some waiting, accepted, declined or withdrawn, and
+sessions read, unread, never opened and ended. The script prints which
+writer each window is. `--no-sessions` skips this, and the GUI opens on
+first run instead. Where there's no OS keychain, the windows' stores unlock
+with the passphrase it prints.
+
 With `--guis 2`, the windows are titled "Quill (1)" and "Quill (2)", each with
-its own settings and stores, so each can be a different login. The server
-stops once both are closed.
+its own settings and stores. They also share a session and have a request
+waiting for each other. The server stops once both are closed.
 
 ## Development
 

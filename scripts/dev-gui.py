@@ -9,11 +9,14 @@ For trying the GUI by hand. Each run:
   2. Fills it with demo data (`quill-seed`): an `admin` account and a few
      writers, all sharing one password, with personas and prompts.
   3. Optionally sets server rules, and when accounts must accept them.
-  4. Starts the GUI with an empty settings folder, so it opens on first run.
-     It's built while the server starts. With --guis 2 (or more), starts
-     that many windows, each with a folder of its own, to try several
-     accounts against each other.
-  5. When the last GUI window closes, stops the server and deletes its
+  4. Acts out requests and sessions among the demo writers
+     (`quill-seed-sessions`) and signs each GUI window in as one of them,
+     so the Requests and Sessions screens are full. --no-sessions skips
+     this, and the GUI opens on first run instead.
+  5. Starts the GUI, built while the server starts. With --guis 2 (or
+     more), starts that many windows, each with a folder of its own, to try
+     several accounts against each other.
+  6. When the last GUI window closes, stops the server and deletes its
      database.
 
 Needs Docker (with Compose) and Rust, as for building Quill. Uses only
@@ -22,6 +25,7 @@ Python's standard library, so it runs the same on Windows, macOS and Linux:
     python scripts/dev-gui.py                    # the usual run
     python scripts/dev-gui.py --rules on-join    # sign-up asks to accept rules
     python scripts/dev-gui.py --guis 2           # two windows, two accounts
+    python scripts/dev-gui.py --no-sessions      # the GUI opens on first run
     python scripts/dev-gui.py --reuse-gui        # keep the GUI's settings and stores
     python scripts/dev-gui.py --no-gui           # just the server; --stop ends it
     python scripts/dev-gui.py --help             # everything else
@@ -91,6 +95,40 @@ def compose(args: argparse.Namespace, *rest: str, check: bool = True) -> int:
     return result.returncode
 
 
+def seed_board(args: argparse.Namespace) -> list[str]:
+    """Runs quill-seed and returns its `QUILL_CAST` lines (the demo logins
+    and personas), showing the rest of what it prints."""
+    cmd = ["docker", "compose", "-p", PROJECT, "-f", str(ROOT / "compose.yaml"),
+           "--profile", "demo", "run", "--build", "--rm", "seed",
+           "--seed", str(args.seed), "--accounts", str(args.accounts),
+           "--prompts", str(args.prompts), "--password", args.password, "--cast"]
+    result = subprocess.run(cmd, cwd=ROOT, env=compose_env(args),
+                            stdout=subprocess.PIPE, text=True)
+    cast = []
+    for line in result.stdout.splitlines():
+        if line.startswith("QUILL_CAST "):
+            cast.append(line)
+        else:
+            print(line)
+    if result.returncode != 0:
+        fail(f"seeding failed (exit {result.returncode}).")
+    return cast
+
+
+def seed_sessions(args: argparse.Namespace, cast: list[str], dirs: list[Path]) -> None:
+    """Acts out requests and sessions, signing each window's folder in as
+    a demo writer (crates/quill-e2e/src/bin/quill-seed-sessions.rs)."""
+    cast_file = target_dir() / "dev-gui" / "cast.txt"
+    cast_file.write_text("\n".join(cast) + "\n", encoding="utf-8")
+    cmd = [str(tool_binary("quill-seed-sessions", args.release)),
+           "--server", f"localhost:{args.port}", "--password", args.password,
+           "--cast", str(cast_file)]
+    for d in dirs:
+        cmd += ["--window", str(d)]
+    if subprocess.run(cmd, cwd=ROOT).returncode != 0:
+        fail("acting out requests and sessions failed; --no-sessions skips it.")
+
+
 def api(port: int, method: str, path: str, body: dict | None = None,
         token: str | None = None) -> dict | None:
     data = None if body is None else json.dumps(body).encode()
@@ -134,13 +172,20 @@ def target_dir() -> Path:
     return Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
 
 
-def gui_binary(release: bool) -> Path:
-    name = "quill-gui.exe" if os.name == "nt" else "quill-gui"
+def tool_binary(name: str, release: bool) -> Path:
+    name = f"{name}.exe" if os.name == "nt" else name
     return target_dir() / ("release" if release else "debug") / name
 
 
+def gui_binary(release: bool) -> Path:
+    return tool_binary("quill-gui", release)
+
+
 def start_gui_build(args: argparse.Namespace, log: Path) -> subprocess.Popen:
-    cmd = ["cargo", "build", "-p", "quill-gui"] + (["--release"] if args.release else [])
+    # The GUI, and the tool that fills its windows with requests and sessions.
+    cmd = ["cargo", "build", "-p", "quill-gui", "-p", "quill-e2e",
+           "--bin", "quill-gui", "--bin", "quill-seed-sessions"]
+    cmd += ["--release"] if args.release else []
     log.parent.mkdir(parents=True, exist_ok=True)
     out = open(log, "w", encoding="utf-8")
     return subprocess.Popen(cmd, cwd=ROOT, stdout=out, stderr=subprocess.STDOUT)
@@ -192,7 +237,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-seed", action="store_true", help="start with an empty database")
     p.add_argument("--seed", type=int, default=1,
                    help="seed for the demo data; the same seed gives the same content (default: %(default)s)")
-    p.add_argument("--accounts", type=int, default=6, help="demo accounts, admin included (default: %(default)s)")
+    p.add_argument("--accounts", type=int, default=6, help="demo accounts, admin included (default: %(default)s; "
+                   "raised if the windows need more)")
+    p.add_argument("--no-sessions", action="store_true",
+                   help="don't act out requests and sessions; the GUI opens on first run")
     p.add_argument("--prompts", type=int, default=150, help="demo prompts (default: %(default)s)")
     p.add_argument("--password", default=DEMO_PASSWORD, help="every demo account's password (default: %(default)s)")
     p.add_argument("--closed", action="store_true",
@@ -214,6 +262,9 @@ def parse_args() -> argparse.Namespace:
     args = p.parse_args()
     if args.rules and args.no_seed:
         p.error("--rules needs the seeded admin account; drop --no-seed")
+    # Each window is a demo writer, and the sessions need three more besides.
+    if not args.no_seed and not args.no_sessions and not args.no_gui:
+        args.accounts = max(args.accounts, args.guis + 4)
     if args.rules_file and not args.rules:
         p.error("--rules-file goes with --rules")
     if not 1 <= args.guis <= 4:
@@ -247,11 +298,10 @@ def main() -> None:
         info = wait_for_server(args)
         print(f"    {info.get('software')} {info.get('softwareVersion')} is up.")
 
+        cast: list[str] = []
         if not args.no_seed:
             say("Filling it with demo data")
-            compose(args, "--profile", "demo", "run", "--build", "--rm", "seed",
-                    "--seed", str(args.seed), "--accounts", str(args.accounts),
-                    "--prompts", str(args.prompts), "--password", args.password)
+            cast = seed_board(args)
         if args.rules:
             say(f"Setting server rules (accept: {args.rules})")
             set_rules(args)
@@ -276,6 +326,9 @@ def main() -> None:
             if not args.reuse_gui and d.exists():
                 shutil.rmtree(d)
             d.mkdir(parents=True, exist_ok=True)
+        if cast and not args.no_sessions and not args.reuse_gui:
+            say("Acting out requests and sessions among the demo writers")
+            seed_sessions(args, cast, dirs)
         if len(dirs) == 1:
             say(f"Starting the GUI (its folder: {dirs[0]}); close the window to finish")
             subprocess.run([str(gui_binary(args.release))], cwd=ROOT,
