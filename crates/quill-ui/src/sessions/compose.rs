@@ -141,8 +141,12 @@ pub fn Composer(
     /// Bumped when what's kept here changes (a draft begun or gone, a note
     /// queued), so the page reads it again.
     here: Signal<u64>,
+    /// "@wren", for the line focus mode shows instead of the page.
+    with: String,
 ) -> Element {
-    let (backend, model) = use_ui();
+    let (backend, mut model) = use_ui();
+    // A memo, so other changes to the model don't re-render the editor.
+    let focused = use_memo(move || model.read().sessions.focus)();
     let label = super::reading::tab_label(&channel);
 
     // The draft as last typed, and whether it's changed since it was kept.
@@ -307,6 +311,11 @@ pub fn Composer(
     let mut send_on_key = send.clone();
     let on_keys = move |e: KeyboardEvent| {
         let m = e.modifiers();
+        if e.key() == Key::Escape && model.peek().sessions.focus {
+            e.prevent_default();
+            model.write().sessions.focus = false;
+            return;
+        }
         if !(m.ctrl() || m.meta()) {
             return;
         }
@@ -347,6 +356,9 @@ pub fn Composer(
     let mut send_now = send.clone();
     rsx! {
         section { class: "composer", aria_label: "Write in {label}",
+            if focused {
+                p { class: "focus-where", "Writing in {label} with {with}" }
+            }
             if let Some(line) = answering_line {
                 div { class: "answering-now",
                     span { "In answer to {line}" }
@@ -405,6 +417,22 @@ pub fn Composer(
             }
             div { class: "composer-bar",
                 div { class: "composer-tools",
+                    button {
+                        class: "quiet",
+                        id: "writing-focus",
+                        aria_pressed: if focused { "true" } else { "false" },
+                        title: if focused { "Esc leaves focus" } else { "Only the editor" },
+                        onclick: move |_| {
+                            let f = !model.peek().sessions.focus;
+                            model.write().sessions.focus = f;
+                            if let Some(el) = editor.peek().clone() {
+                                spawn(async move {
+                                    let _ = el.set_focus(true).await;
+                                });
+                            }
+                        },
+                        if focused { "Leave focus" } else { "Focus" }
+                    }
                     if form() == Form::Live {
                         button {
                             class: "quiet",

@@ -54,8 +54,13 @@ pub fn Frame() -> Element {
             });
         }
     });
+    // Focus mode shows only the editor of the open session.
+    let focus = {
+        let m = model.read();
+        m.sessions.focus && m.section == Section::Sessions && m.sessions.open.is_some()
+    };
     rsx! {
-        div { class: "frame",
+        div { class: if focus { "frame focus" } else { "frame" },
             Nav {}
             main { class: "main", id: "main",
                 onmounted: move |e| main_el.set(Some(e.data())),

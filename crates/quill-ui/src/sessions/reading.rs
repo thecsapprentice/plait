@@ -54,6 +54,8 @@ pub fn SessionPage(id: String) -> Element {
     // Bumped when drafts or waiting notes change here; they're read from
     // this computer, apart from the session (so they show offline too).
     let here = use_signal(|| 0u64);
+    // Focus mode is for this session's editor: leaving the session ends it.
+    use_drop(move || model.write().sessions.focus = false);
 
     // Read again on each load of the list (a note arrived, live), and only
     // then: the memo keeps other changes to the model from re-reading it.
@@ -222,7 +224,9 @@ pub fn SessionPage(id: String) -> Element {
         };
         names.get(to).cloned()
     };
+    let with = s.partner.as_ref().map(|p| p.name()).unwrap_or_default();
     rsx! {
+        div { class: "session-head",
         {back}
         h1 { "{heading}" }
         if let Some((_, t)) = &s.prompt {
@@ -240,6 +244,7 @@ pub fn SessionPage(id: String) -> Element {
         }
         if v.history_missing {
             p { class: "hint", "Older notes aren't on this computer yet. Another of your devices is sending them." }
+        }
         }
         if offline() {
             div { class: "notice", role: "status",
@@ -362,6 +367,7 @@ pub fn SessionPage(id: String) -> Element {
                             answering_line: answering_line.clone(),
                             focus: focus_editor,
                             here,
+                            with: with.clone(),
                         }
                     }
                 }

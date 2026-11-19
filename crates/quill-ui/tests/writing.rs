@@ -247,3 +247,27 @@ async fn the_limit_is_said_and_a_long_note_gets_the_plain_editor() {
     d.click("Write in place").await;
     assert!(d.has_button("Write and preview"));
 }
+
+#[tokio::test]
+async fn focus_mode_shows_only_the_editor_until_left() {
+    let sim = sim();
+    let (mut d, _) = reading(&sim).await;
+    d.type_into(EDITOR, "Quiet now.").await;
+    d.click("Focus").await;
+    assert!(d.has_element_with_class("focus"));
+    assert!(d.has_text("Writing in Story with @wren"));
+    assert!(d.pressed("writing-focus"));
+    // Esc in the editor leaves it, keeping what's written.
+    d.press_command(EDITOR, Key::Escape).await;
+    assert!(!d.has_element_with_class("focus"));
+    assert_eq!(d.attr(EDITOR, "value").as_deref(), Some("Quiet now."));
+    // Leaving the session leaves focus too.
+    d.click("Focus").await;
+    d.click("Leave focus").await;
+    assert!(!d.has_element_with_class("focus"));
+    d.click("Focus").await;
+    d.click("Board").await;
+    d.click("Sessions").await;
+    d.wait_for_text("Writing with @wren").await;
+    assert!(!d.has_element_with_class("focus"));
+}

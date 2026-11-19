@@ -550,6 +550,18 @@ textarea.over::selection { background: color-mix(in srgb, var(--accent) 28%, tra
 .limit { font-size: var(--text-sm); color: var(--muted); }
 .limit.over { color: var(--bad); font-weight: 600; }
 .draft-mark { color: var(--muted); }
+/* Focus mode: only the open session's editor, centred, with a line saying
+   where it writes. Esc or "Leave focus" brings the rest back. */
+.focus-where { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.frame.focus { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "status"; }
+.frame.focus .nav, .frame.focus .session-head, .frame.focus .channels,
+.frame.focus .channel > .hint, .frame.focus .channel > .coming,
+.frame.focus .notes:not(.waiting-notes) { display: none; }
+.frame.focus .session-body { grid-template-columns: minmax(0, 1fr); margin-top: 0; }
+.frame.focus .channel { max-width: none; }
+.frame.focus .composer { width: min(46rem, 100%); margin: var(--space-6) auto 0; border-top: 0; padding-top: 0; }
+.frame.focus .live, .frame.focus .preview { max-height: 75vh; }
+.frame.focus .writing { min-height: 60vh; }
 
 /* ---- The design reference (advanced mode) ---- */
 .ref-themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr)); gap: var(--space-5); align-items: start; }
