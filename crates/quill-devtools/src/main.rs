@@ -50,6 +50,10 @@ struct Args {
     /// Leave out the demo moderation scripts, chains and common data.
     #[arg(long)]
     no_automod: bool,
+    /// Also print each account as a `QUILL_CAST login handle…` line, for
+    /// tools that act as the demo writers next (`quill-seed-sessions`).
+    #[arg(long)]
+    cast: bool,
 }
 
 struct Account {
@@ -261,6 +265,13 @@ async fn run(args: Args) -> Result<()> {
             ""
         };
         println!("  {:<10}{role:<9} {}", a.login, handles.join(", "));
+    }
+    if args.cast {
+        println!();
+        for a in &accounts {
+            let handles: Vec<&str> = a.personas.iter().map(|(_, h)| h.as_str()).collect();
+            println!("QUILL_CAST {} {}", a.login, handles.join(" "));
+        }
     }
     Ok(())
 }
