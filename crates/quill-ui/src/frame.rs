@@ -54,17 +54,18 @@ pub fn Frame() -> Element {
             });
         }
     });
-    // Focus mode shows only the editor of the open session.
-    let focus = {
+    // An open session gets a wider page; focus mode shows only its editor.
+    let (session_open, focus) = {
         let m = model.read();
-        m.sessions.focus && m.section == Section::Sessions && m.sessions.open.is_some()
+        let open = m.section == Section::Sessions && m.sessions.open.is_some();
+        (open, open && m.sessions.focus)
     };
     rsx! {
         div { class: if focus { "frame focus" } else { "frame" },
             Nav {}
             main { class: "main", id: "main",
                 onmounted: move |e| main_el.set(Some(e.data())),
-                div { class: if matches!(section, Section::Board | Section::MyPrompts | Section::Reference) { "page wide" } else { "page" },
+                div { class: if matches!(section, Section::Board | Section::MyPrompts | Section::Reference) { "page wide" } else if session_open { "page session" } else { "page" },
                     if rules_banner {
                         div { class: "nudge", role: "status",
                             p { "The server rules have changed. Read and accept them to keep posting, editing, commenting and reporting." }

@@ -162,3 +162,47 @@ fn focus_mode_centres_the_editor() {
     assert!(rule(".frame.focus .page").contains("max-width: none"));
     assert!(rule(".frame.focus .composer").contains("margin: var(--space-6) auto 0"));
 }
+
+/// Found by hand (3f-2): on a narrow window, focus mode hid the side bar
+/// but kept the narrow layout's three rows, so the status bar took the
+/// stretching one. Focus mode sets its own two rows.
+#[test]
+fn focus_mode_keeps_the_status_bar_small_when_narrow() {
+    let rule = crate::STYLE
+        .lines()
+        .find(|l| l.starts_with(".frame.focus {"))
+        .expect("a .frame.focus rule");
+    assert!(
+        rule.contains("grid-template-rows: minmax(0, 1fr) auto"),
+        "{rule}"
+    );
+}
+
+/// Found by hand (3f-2): a wide window left the page at its left edge, and
+/// a session no wider than any page, so Write and preview had no room for
+/// its two columns. Pages centre; a session takes more width.
+#[test]
+fn pages_centre_and_a_session_has_room() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".page").contains("margin-inline: auto"));
+    assert!(rule(".page.session").contains("max-width: 76rem"));
+}
+
+/// Found by hand (3f-2): in Write and preview the preview's first paragraph
+/// kept its top margin, so its first line sat lower than the editor's
+/// beside it. The first block inside it starts flush.
+#[test]
+fn the_side_by_side_preview_lines_up_with_the_editor() {
+    assert!(
+        crate::STYLE.lines().any(
+            |l| l.starts_with(".split .preview .markdown > :first-child {")
+                && l.contains("margin-top: 0")
+        ),
+        "no first-child rule for the side-by-side preview"
+    );
+}

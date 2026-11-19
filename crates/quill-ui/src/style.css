@@ -305,7 +305,9 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .section[aria-current="page"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
 .main { grid-area: main; position: relative; overflow-y: auto; padding: 1.5rem clamp(1rem, 4vw, 3rem); }
 .main > h1 { margin-top: 0; font-size: 1.5rem; }
-.page { max-width: 44rem; }
+.page { max-width: 44rem; margin-inline: auto; }
+/* An open session: room for the channels, notes, and a side-by-side preview. */
+.page.session { max-width: 76rem; }
 .status {
   grid-area: status;
   display: flex;
@@ -492,7 +494,7 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 /* ---- Sessions (3f) ---- */
 /* Channels run down the side of the notes, each with its unread count;
    above them on a narrow window. */
-.session-body { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, var(--width-read)); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
+.session-body { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
 .channels { display: flex; flex-direction: column; gap: 2px; position: sticky; top: var(--space-4); }
 .channels [role="tab"] { display: flex; align-items: center; justify-content: space-between; text-align: left; border: 0; border-left: 3px solid transparent; border-radius: 0 var(--radius-s) var(--radius-s) 0; background: none; padding: var(--space-2) var(--space-3); min-height: var(--control); color: var(--muted); cursor: pointer; font: inherit; }
 .channels [role="tab"]:hover { color: var(--ink); background: var(--surface); }
@@ -502,7 +504,9 @@ fieldset > .hint { margin-bottom: var(--space-3); }
   .session-body { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .channels { position: static; }
 }
-.channel { max-width: var(--width-read); min-width: 0; }
+.channel { min-width: 0; }
+/* Notes keep a reading width; the composer takes the whole column. */
+.channel .notes, .channel > .hint, .channel > .coming { max-width: var(--width-read); }
 .notes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .note header { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .note .name { font-weight: 600; }
@@ -528,6 +532,8 @@ textarea.writing { resize: vertical; background: var(--surface); display: block;
   .split:not(.single) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 .preview { padding: var(--space-3); border: 1px dashed var(--edge); border-radius: var(--radius-s); overflow: auto; max-height: 60vh; }
+/* Its first line lines up with the editor's beside it. */
+.split .preview .markdown > :first-child { margin-top: 0; }
 /* Live: the styled source, with a transparent text area over it. Both sit
    in one grid cell; the mirror sets the height, so the text area grows with
    the text and the box scrolls. */
@@ -554,7 +560,7 @@ textarea.over::selection { background: color-mix(in srgb, var(--accent) 28%, tra
 /* Focus mode: only the open session's editor, centred, with a line saying
    where it writes. Esc or "Leave focus" brings the rest back. */
 .focus-where { margin: 0; color: var(--muted); font-size: var(--text-sm); }
-.frame.focus { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "status"; }
+.frame.focus { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "main" "status"; }
 .frame.focus .nav, .frame.focus .session-head, .frame.focus .channels,
 .frame.focus .channel > .hint, .frame.focus .channel > .coming,
 .frame.focus .notes:not(.waiting-notes) { display: none; }
