@@ -9,6 +9,7 @@
 
 use std::rc::Rc;
 
+use dioxus_html::Key;
 use quill_ui::{
     backend::{SessionStanding, codes},
     testing::{Asked, Driver, Sim},
@@ -217,6 +218,39 @@ async fn named_channels_answers_edits_and_deletions_show() {
     d.click("In answer to: Chapter one begins at sea.").await;
     d.wait_for_text("A second try.").await;
     assert_eq!(d.asked_of(&format!("note-{first}")), [Asked::IntoView]);
+}
+
+#[tokio::test]
+async fn channels_list_down_the_side_and_the_arrow_keys_move_between_them() {
+    let sim = sim();
+    let (mut d, id) = with_a_session(&sim).await;
+    sim.name_channel(SERVER, &id, "research", "Ships and tides.");
+    sim.write_as(SERVER, &id, "wren", "planning", "Shall we keep it short?");
+    sim.write_as(SERVER, &id, "wren", "research", "Tide tables for 1890.");
+    d.click("Open the session with @wren on “The ledger”").await;
+    d.wait_for_text("Nothing in Story yet.").await;
+    assert_eq!(
+        d.attr("channels", "aria-orientation").as_deref(),
+        Some("vertical")
+    );
+    // Each channel with notes not read here carries its own count.
+    assert!(d.has_button("Planning 1 unread"));
+    assert!(d.has_button("Research 1 unread"));
+
+    // Down moves to the next channel, shows it and focuses its label.
+    let _ = d.asked_of("channel-tab-planning");
+    d.press("Story", Key::ArrowDown).await;
+    d.wait_for_text("Shall we keep it short?").await;
+    assert_eq!(d.asked_of("channel-tab-planning"), [Asked::Focus]);
+    d.press("Planning", Key::ArrowDown).await;
+    d.wait_for_text("Tide tables for 1890.").await;
+    // Up goes back; it wraps from the top to the bottom.
+    d.press("Research", Key::ArrowUp).await;
+    d.wait_for_text("Shall we keep it short?").await;
+    d.press("Planning", Key::Home).await;
+    d.wait_for_text("Nothing in Story yet.").await;
+    d.press("Story", Key::ArrowUp).await;
+    d.wait_for_text("Tide tables for 1890.").await;
 }
 
 #[tokio::test]

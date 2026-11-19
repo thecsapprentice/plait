@@ -38,6 +38,8 @@ pub fn SessionPage(id: String) -> Element {
     let mut channel = use_signal(|| "story".to_owned());
     // Each note's element, to bring an answered note into view.
     let mut notes_el = use_signal(HashMap::<u64, Rc<MountedData>>::new);
+    // Each channel's label, to move focus with the arrow keys.
+    let mut tabs_el = use_signal(HashMap::<String, Rc<MountedData>>::new);
 
     // Read again on each load of the list (a note arrived, live).
     let b = backend.clone();
@@ -150,6 +152,33 @@ pub fn SessionPage(id: String) -> Element {
         .map(|n| (n.seq, (n.channel.clone(), first_line(&n.content))))
         .collect();
     let offset = backend.utc_offset();
+    let names: Vec<String> = v.channels.iter().map(|c| c.name.clone()).collect();
+    // Up, Down, Home and End move between channels (a vertical tab list),
+    // showing the one moved to and focusing its label.
+    let step = move |from: &str, key: Key| {
+        let at = names.iter().position(|n| n == from)?;
+        let last = names.len().checked_sub(1)?;
+        let to = match key {
+            Key::ArrowDown => {
+                if at == last {
+                    0
+                } else {
+                    at + 1
+                }
+            }
+            Key::ArrowUp => {
+                if at == 0 {
+                    last
+                } else {
+                    at - 1
+                }
+            }
+            Key::Home => 0,
+            Key::End => last,
+            _ => return None,
+        };
+        names.get(to).cloned()
+    };
     rsx! {
         {back}
         h1 { "{heading}" }
@@ -169,49 +198,80 @@ pub fn SessionPage(id: String) -> Element {
         if v.history_missing {
             p { class: "hint", "Older notes aren't on this computer yet. Another of your devices is sending them." }
         }
-        div { class: "channels", role: "tablist", aria_label: "Channels",
-            for c in v.channels.iter().cloned() {
-                button {
-                    key: "{c.name}",
-                    role: "tab",
-                    aria_selected: if c.name == current { "true" } else { "false" },
-                    onclick: {
-                        let name = c.name.clone();
-                        move |_| channel.set(name.clone())
-                    },
-                    "{tab_label(&c.name)}"
-                    if c.unseen > 0 && c.name != current {
-                        span { class: "badge", " {c.unseen}" span { class: "sr-only", " unread" } }
+        div { class: "session-body",
+            div {
+                class: "channels",
+                id: "channels",
+                role: "tablist",
+                aria_label: "Channels",
+                aria_orientation: "vertical",
+                for c in v.channels.iter().cloned() {
+                    button {
+                        key: "{c.name}",
+                        class: "channel-tab-{c.name}",
+                        role: "tab",
+                        aria_selected: if c.name == current { "true" } else { "false" },
+                        // Only the shown channel is a Tab stop; arrows do the rest.
+                        tabindex: if c.name == current { "0" } else { "-1" },
+                        onmounted: {
+                            let name = c.name.clone();
+                            move |e: MountedEvent| {
+                                tabs_el.write().insert(name.clone(), e.data());
+                            }
+                        },
+                        onclick: {
+                            let name = c.name.clone();
+                            move |_| channel.set(name.clone())
+                        },
+                        onkeydown: {
+                            let name = c.name.clone();
+                            let step = step.clone();
+                            move |e: KeyboardEvent| {
+                                if let Some(to) = step(&name, e.key()) {
+                                    e.prevent_default();
+                                    channel.set(to.clone());
+                                    if let Some(el) = tabs_el.peek().get(&to).cloned() {
+                                        spawn(async move {
+                                            let _ = el.set_focus(true).await;
+                                        });
+                                    }
+                                }
+                            }
+                        },
+                        span { class: "label", "{tab_label(&c.name)}" }
+                        if c.unseen > 0 && c.name != current {
+                            span { class: "badge", " {c.unseen}" span { class: "sr-only", " unread" } }
+                        }
                     }
                 }
             }
-        }
-        section { class: "channel", role: "tabpanel", aria_label: "{tab_label(&current)}",
-            if let Some(d) = summary {
-                p { class: "hint", "{d}" }
-            }
-            if shown.is_empty() {
-                p { class: "coming", "Nothing in {tab_label(&current)} yet." }
-            } else {
-                ol { class: "notes",
-                    for n in shown {
-                        NoteItem {
-                            key: "{n.seq}",
-                            answering: n.reply_to.and_then(|r| firsts.get(&r).cloned().map(|f| (r, f))),
-                            when: when(offset, n.at),
-                            on_mounted: move |(seq, el): (u64, Rc<MountedData>)| {
-                                notes_el.write().insert(seq, el);
-                            },
-                            on_answer: move |(seq, ch): (u64, String)| {
-                                // The answered note may be in another channel.
-                                channel.set(ch);
-                                if let Some(el) = notes_el.peek().get(&seq).cloned() {
-                                    spawn(async move {
-                                        let _ = el.scroll_to(ScrollBehavior::Instant).await;
-                                    });
-                                }
-                            },
-                            n,
+            section { class: "channel", role: "tabpanel", aria_label: "{tab_label(&current)}",
+                if let Some(d) = summary {
+                    p { class: "hint", "{d}" }
+                }
+                if shown.is_empty() {
+                    p { class: "coming", "Nothing in {tab_label(&current)} yet." }
+                } else {
+                    ol { class: "notes",
+                        for n in shown {
+                            NoteItem {
+                                key: "{n.seq}",
+                                answering: n.reply_to.and_then(|r| firsts.get(&r).cloned().map(|f| (r, f))),
+                                when: when(offset, n.at),
+                                on_mounted: move |(seq, el): (u64, Rc<MountedData>)| {
+                                    notes_el.write().insert(seq, el);
+                                },
+                                on_answer: move |(seq, ch): (u64, String)| {
+                                    // The answered note may be in another channel.
+                                    channel.set(ch);
+                                    if let Some(el) = notes_el.peek().get(&seq).cloned() {
+                                        spawn(async move {
+                                            let _ = el.scroll_to(ScrollBehavior::Instant).await;
+                                        });
+                                    }
+                                },
+                                n,
+                            }
                         }
                     }
                 }
