@@ -8,8 +8,11 @@
 //!
 //! Notes go out in the order they were queued. [`flush`] stops at the first
 //! one the server can't take yet (offline), or that it refused, so a later
-//! note never overtakes an earlier one. See docs/plan.md, "Writing in the
+//! note never overtakes an earlier one. The sessions with notes waiting are
+//! listed in [`Table::Meta`], so [`flush_all`] needn't search every session. See docs/plan.md, "Writing in the
 //! desktop app (3f-2)".
+
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -19,11 +22,41 @@ use crate::{
     history::{get, key, prefix, put},
     mls::Provider,
     sessions,
-    store::kv::Table,
+    store::kv::{Op, Table},
 };
 
 const DRAFT: u8 = 7;
 const QUEUED: u8 = 8;
+/// The group ids (base64url) of sessions with notes waiting.
+const WAITING: &[u8] = b"drafts:waiting";
+
+fn waiting(store: &Store) -> Result<BTreeSet<String>, CoreError> {
+    Ok(match store.get(Table::Meta, WAITING)? {
+        Some(v) => serde_json::from_slice(&v).map_err(|_| err("a stored list is damaged"))?,
+        None => BTreeSet::new(),
+    })
+}
+
+/// Lists or unlists `gid` among the sessions with notes waiting, by
+/// whether any are.
+fn note_waiting(store: &Store, gid: &[u8]) -> Result<(), CoreError> {
+    let mut all = waiting(store)?;
+    let id = quill_proto::keys::b64(gid);
+    let changed = if queued(store, gid)?.is_empty() {
+        all.remove(&id)
+    } else {
+        all.insert(id)
+    };
+    if changed {
+        let v = serde_json::to_vec(&all).map_err(|_| err("encoding"))?;
+        store.apply(&[Op::Put {
+            table: Table::Meta,
+            key: WAITING,
+            value: &v,
+        }])?;
+    }
+    Ok(())
+}
 
 fn err(msg: impl Into<String>) -> CoreError {
     CoreError::Keys(quill_proto::codes::HISTORY_CHECK_FAILED, msg.into())
@@ -116,6 +149,7 @@ pub fn queue(
         &key(gid, QUEUED, q.id.as_bytes()),
         &q,
     )?;
+    note_waiting(store, gid)?;
     Ok(q)
 }
 
@@ -146,6 +180,7 @@ pub fn withdraw(store: &Store, gid: &[u8], id: Uuid) -> Result<bool, CoreError> 
     let k = key(gid, QUEUED, id.as_bytes());
     let was = get::<Queued>(&p, &k)?.is_some();
     p.set(Table::Messages, &k, None)?;
+    note_waiting(store, gid)?;
     Ok(was)
 }
 
@@ -204,7 +239,27 @@ pub async fn flush(
             }
         }
     }
+    note_waiting(store, gid)?;
     Ok(done)
+}
+
+/// Sends what's waiting in every session, in each one's order. Stops at
+/// the first session found offline; a refusal stops only its session.
+pub async fn flush_all(store: &Store, client: &Client) -> Result<Flushed, CoreError> {
+    let mut all = Flushed::default();
+    for id in waiting(store)? {
+        let Some(gid) = quill_proto::keys::unb64(&id) else {
+            continue;
+        };
+        let done = flush(store, client, &id, &gid).await?;
+        all.sent.extend(done.sent);
+        all.refused = all.refused.or(done.refused);
+        if done.offline {
+            all.offline = true;
+            break;
+        }
+    }
+    Ok(all)
 }
 
 #[cfg(test)]
@@ -262,10 +317,15 @@ mod tests {
         assert_eq!(queued(&store, GID).unwrap()[1].text, "Second, changed");
         assert_eq!(ids(&store), [a.id, b.id, c.id]);
 
+        assert_eq!(waiting(&store).unwrap().len(), 1);
         assert!(withdraw(&store, GID, a.id).unwrap());
         assert!(!withdraw(&store, GID, a.id).unwrap());
         assert!(change(&store, GID, a.id, "x").is_err());
         assert_eq!(ids(&store), [b.id, c.id]);
+        // The last one gone, the session isn't listed as waiting.
+        withdraw(&store, GID, b.id).unwrap();
+        withdraw(&store, GID, c.id).unwrap();
+        assert!(waiting(&store).unwrap().is_empty());
     }
 
     #[test]

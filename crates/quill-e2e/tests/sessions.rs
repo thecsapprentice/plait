@@ -427,8 +427,8 @@ async fn queued_notes_go_in_order_and_stop_at_a_refusal() {
     assert!(done.offline && done.sent.is_empty());
     assert_eq!(drafts::queued(&laptop, &gid).unwrap().len(), 2);
 
-    // Back online: both go, in order.
-    let done = drafts::flush(&laptop, &alice_c, &id, &gid).await.unwrap();
+    // Back online: both go, in order (upkeep sends every session's).
+    let done = drafts::flush_all(&laptop, &alice_c).await.unwrap();
     assert_eq!(
         done.sent.iter().map(|s| s.0).collect::<Vec<_>>(),
         [first.id, second.id]
