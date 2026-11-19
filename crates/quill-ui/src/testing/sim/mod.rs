@@ -829,10 +829,21 @@ impl Backend for Sim {
     }
 
     fn next_notice(&self) -> Call<'_, ()> {
+        // As the server's event stream: it can't open to a server that's
+        // down, and it breaks when the server goes down.
         let live = self.0.borrow().live.clone();
         Box::pin(async move {
-            live.notified().await;
-            Ok(())
+            self.reach()?;
+            let notified = live.notified();
+            tokio::pin!(notified);
+            loop {
+                tokio::select! {
+                    () = &mut notified => return Ok(()),
+                    () = tokio::time::sleep(Duration::from_millis(50)) => {
+                        self.reach()?;
+                    }
+                }
+            }
         })
     }
 

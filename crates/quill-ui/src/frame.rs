@@ -265,10 +265,22 @@ fn StatusLine() -> Element {
     }
 }
 
-/// Waits `ms`, or less if a live notice comes first (when `listen`).
-async fn wait(backend: &dyn Backend, ms: u64, listen: bool) {
+/// How a wait ended.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Waited {
+    /// The time ran out, or a live notice came.
+    Done,
+    /// The live connection failed: the wait was cut to `lost_ms`.
+    Lost,
+}
+
+/// Waits `ms`, or less if a live notice comes first (when `listen`). If the
+/// live connection fails (the server went down, say), it waits only
+/// `lost_ms` from then, so upkeep soon finds out whether it's back.
+async fn wait(backend: &dyn Backend, ms: u64, listen: bool, lost_ms: u64) -> Waited {
     let mut sleep = backend.sleep(ms);
     let mut notice = listen.then(|| backend.next_notice());
+    let mut lost = false;
     poll_fn(|cx| {
         if sleep.as_mut().poll(cx).is_ready() {
             return Poll::Ready(());
@@ -276,14 +288,21 @@ async fn wait(backend: &dyn Backend, ms: u64, listen: bool) {
         if let Some(n) = notice.as_mut() {
             match n.as_mut().poll(cx) {
                 Poll::Ready(Ok(())) => return Poll::Ready(()),
-                // No live notices (offline, or an old server): just wait.
-                Poll::Ready(Err(_)) => notice = None,
+                Poll::Ready(Err(_)) => {
+                    notice = None;
+                    lost = true;
+                    sleep = backend.sleep(lost_ms.min(ms));
+                    if sleep.as_mut().poll(cx).is_ready() {
+                        return Poll::Ready(());
+                    }
+                }
                 Poll::Pending => {}
             }
         }
         Poll::Pending
     })
     .await;
+    if lost { Waited::Lost } else { Waited::Done }
 }
 
 /// Background upkeep for `server`: on start, every few minutes, and on
@@ -295,6 +314,8 @@ fn Upkeep(server: Uuid) -> Element {
         let b: Rc<dyn Backend> = backend.clone();
         spawn(async move {
             let mut retry = RETRY_FIRST_MS;
+            // How soon to look after the live connection fails.
+            let mut lost = RETRY_FIRST_MS;
             // An open in flight gets one short wait before the loop loads
             // the server itself, so a lost reply can't leave it connecting.
             let mut opening_waited = false;
@@ -343,18 +364,23 @@ fn Upkeep(server: Uuid) -> Element {
                 };
                 match status {
                     Status::Offline => {
-                        wait(&*b, retry, false).await;
+                        wait(&*b, retry, false, retry).await;
                         retry = (retry * 2).min(RETRY_MOST_MS);
                     }
                     // Still opening: look again shortly.
                     Status::Connecting => {
-                        wait(&*b, RETRY_FIRST_MS, false).await;
+                        wait(&*b, RETRY_FIRST_MS, false, RETRY_FIRST_MS).await;
                         opening_waited = true;
                     }
-                    _ => {
-                        retry = RETRY_FIRST_MS;
-                        wait(&*b, UPKEEP_EVERY_MS, signed_in).await;
-                    }
+                    // A lost live connection is looked into soon, backing
+                    // off in case the server has no live notices at all.
+                    _ => match wait(&*b, UPKEEP_EVERY_MS, signed_in, lost).await {
+                        Waited::Lost => lost = (lost * 2).min(RETRY_MOST_MS),
+                        Waited::Done => {
+                            retry = RETRY_FIRST_MS;
+                            lost = RETRY_FIRST_MS;
+                        }
+                    },
                 }
             }
         });

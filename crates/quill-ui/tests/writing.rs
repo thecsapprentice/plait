@@ -68,8 +68,10 @@ async fn a_note_is_sent_and_the_editor_starts_again() {
     assert_eq!(texts(&sim, &id).last().unwrap(), "The lamp **went out**.");
     d.wait_for_text("The lamp went out").await;
     assert_eq!(d.attr(EDITOR, "value").as_deref(), Some(""));
+    // Found by hand: "Sent." stayed while the next note was written.
     // Ctrl+Enter sends too.
     d.type_into(EDITOR, "And the bell.").await;
+    assert!(!d.has_text("Sent."));
     d.press_command(EDITOR, Key::Enter).await;
     d.wait_until("it's sent", |_| {
         texts(&sim, &id).last().map(String::as_str) == Some("And the bell.")
@@ -184,9 +186,9 @@ async fn notes_written_offline_wait_can_change_and_go_once_back() {
         .await;
     assert_eq!(sim.waiting_in(&id)[0].0, "Written on the late train.");
 
-    // Back online: upkeep sends it.
+    // Back online: upkeep notices soon, with no live notice to wake it
+    // (found by hand: it waited minutes), and sends it.
     sim.server(SERVER, |s| s.reachable = true);
-    sim.live();
     d.wait_until("it's sent", |_| sim.waiting_in(&id).is_empty())
         .await;
     assert_eq!(
