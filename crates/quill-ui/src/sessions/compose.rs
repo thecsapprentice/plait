@@ -175,6 +175,9 @@ pub fn Composer(
     let mut sending = use_signal(|| false);
     let mut said = use_signal(|| None::<Said>);
     let mut editor = use_signal(|| None::<Rc<MountedData>>);
+    // After a shortcut remounts the text area: the selection to put back,
+    // once the new one is in the page (finding 2).
+    let mut reselect = use_signal(|| None::<(usize, usize)>);
 
     use_hook(|| {
         spawn(async move {
@@ -297,15 +300,25 @@ pub fn Composer(
                 &old[j..]
             ));
             dirty.set(true);
-            *generation.write() += 1;
             let n = mark.encode_utf16().count();
-            let _ = document::eval(&format!(
-                "requestAnimationFrame(() => {{ const t = document.querySelector('.note-editor'); if (t) {{ t.focus(); t.setSelectionRange({}, {}); }} }});",
-                a + n,
-                z + n
-            ))
-            .await;
+            reselect.set(Some((a + n, z + n)));
+            *generation.write() += 1;
         });
+    };
+    // The text area just mounted: keep it, and after a shortcut give it
+    // back the caret and the selection.
+    let mounted = move |e: MountedEvent| {
+        let el = e.data();
+        editor.set(Some(el.clone()));
+        if let Some((a, z)) = reselect.take() {
+            spawn(async move {
+                let _ = el.set_focus(true).await;
+                let _ = document::eval(&format!(
+                    "const t = document.querySelector('.note-editor'); if (t) t.setSelectionRange({a}, {z});"
+                ))
+                .await;
+            });
+        }
     };
 
     let mut send_on_key = send.clone();
@@ -344,6 +357,10 @@ pub fn Composer(
         }
         text.set(v);
         dirty.set(true);
+        // "Sent." was about the last note; this is a new one.
+        if matches!(*said.peek(), Some(Said::Sent)) {
+            said.set(None);
+        }
     };
 
     let key = format!("{}-{:?}", generation(), form());
@@ -388,7 +405,7 @@ pub fn Composer(
                             initial_value: "{text.peek()}",
                             oninput: on_input,
                             onkeydown: on_keys.clone(),
-                            onmounted: move |e: MountedEvent| editor.set(Some(e.data())),
+                            onmounted: mounted,
                         }
                     }
                 }
@@ -407,7 +424,7 @@ pub fn Composer(
                             initial_value: "{text.peek()}",
                             oninput: on_input,
                             onkeydown: on_keys.clone(),
-                            onmounted: move |e: MountedEvent| editor.set(Some(e.data())),
+                            onmounted: mounted,
                         }
                     }
                     if show_preview() {
