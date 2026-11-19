@@ -61,18 +61,23 @@ pub fn AskToWrite(prompt: Prompt) -> Element {
             p { class: "hint", role: "status",
                 "Request sent. Only @{author}'s devices can read your pitch. Their answer will show on Requests and Home."
             }
-            div { class: "actions",
-                button { class: "quiet", onclick: move |_| model.write().open_requests(None), "See your requests" }
+            div { class: "with-aside",
+                div { class: "actions",
+                    button { class: "quiet", onclick: move |_| model.write().open_requests(None), "See your requests" }
+                }
+                CompareWords { handle: author.clone(), as_persona: persona }
             }
-            CompareWords { handle: author.clone(), as_persona: persona }
         };
     }
     if !open() {
         return rsx! {
-            div { class: "actions",
-                button { class: "secondary", onclick: move |_| open.set(true), "Ask to write together" }
+            // The words sit beside the button, or under it if there's no room.
+            div { class: "with-aside",
+                div { class: "actions",
+                    button { class: "secondary", onclick: move |_| open.set(true), "Ask to write together" }
+                }
+                CompareWords { handle: author.clone(), as_persona: persona }
             }
-            CompareWords { handle: author.clone(), as_persona: persona }
         };
     }
 

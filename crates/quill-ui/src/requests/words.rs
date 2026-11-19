@@ -33,7 +33,28 @@ fn Words(handle: String, words: Option<Vec<String>>) -> Element {
     }
 }
 
-/// "Compare words with @name", opened in place.
+/// What comparing words is for, on hover or keyboard focus.
+#[component]
+fn WhatIsThis(handle: String) -> Element {
+    rsx! {
+        span { class: "info",
+            button {
+                class: "info-button",
+                id: "words-info-{handle}",
+                aria_label: "What is this?",
+                aria_describedby: "words-tip-{handle}",
+                "?"
+            }
+            span { class: "tip", role: "tooltip", id: "words-tip-{handle}",
+                strong { "What is this? " }
+                "Comparing these words with @{handle} some other way, like a call or a text, lets you make sure they are who they say they are."
+            }
+        }
+    }
+}
+
+/// "Compare words with @name": a small panel off to the side of a prompt
+/// or request, opened in place.
 #[component]
 pub fn CompareWords(handle: String, as_persona: Uuid) -> Element {
     let (backend, _) = use_ui();
@@ -47,22 +68,22 @@ pub fn CompareWords(handle: String, as_persona: Uuid) -> Element {
             shown.set(Some(b.identity_words(&h, as_persona).await));
         });
     };
-    if !open() {
-        return rsx! {
-            div { class: "actions",
-                button { class: "quiet", onclick: show, "Compare words with @{handle}" }
-            }
-        };
-    }
     rsx! {
-        div { class: "compare-words",
-            match shown() {
-                None => rsx! { p { class: "coming", "Working out the words…" } },
-                Some(Err(p)) => rsx! { ProblemLine { problem: p } },
-                Some(Ok(words)) => rsx! { Words { handle: handle.clone(), words } },
+        aside { class: "compare-words",
+            div { class: "compare-head",
+                if open() {
+                    button { class: "link", onclick: move |_| open.set(false), "Hide the words" }
+                } else {
+                    button { class: "link", onclick: show, "Compare words with @{handle}" }
+                }
+                WhatIsThis { handle: handle.clone() }
             }
-            div { class: "actions",
-                button { class: "quiet", onclick: move |_| open.set(false), "Hide the words" }
+            if open() {
+                match shown() {
+                    None => rsx! { p { class: "coming", "Working out the words…" } },
+                    Some(Err(p)) => rsx! { ProblemLine { problem: p } },
+                    Some(Ok(words)) => rsx! { Words { handle: handle.clone(), words } },
+                }
             }
         }
     }

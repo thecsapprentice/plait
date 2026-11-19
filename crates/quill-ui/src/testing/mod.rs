@@ -874,18 +874,40 @@ impl Driver {
     /// Presses Enter in the field with `id`.
     pub async fn enter(&mut self, id: &str) {
         let field = self.by_id(id);
-        let key = dioxus_html::SerializedKeyboardData::new(
-            dioxus_html::Key::Enter,
-            dioxus_html::Code::Enter,
+        self.keydown(field, dioxus_html::Key::Enter).await;
+    }
+
+    /// Presses `key` on the button labelled `label`, as when it has focus
+    /// (moving between tabs with the arrow keys).
+    pub async fn press(&mut self, label: &str, key: dioxus_html::Key) {
+        let b = self
+            .button(label)
+            .unwrap_or_else(|| panic!("no button \"{label}\"; the window shows:\n{}", self.text()));
+        self.keydown(b, key).await;
+    }
+
+    async fn keydown(&mut self, target: usize, key: dioxus_html::Key) {
+        use dioxus_html::{Code, Key};
+        let code = match key {
+            Key::Enter => Code::Enter,
+            Key::ArrowUp => Code::ArrowUp,
+            Key::ArrowDown => Code::ArrowDown,
+            Key::Home => Code::Home,
+            Key::End => Code::End,
+            _ => Code::Unidentified,
+        };
+        let data = dioxus_html::SerializedKeyboardData::new(
+            key,
+            code,
             dioxus_html::Location::Standard,
             false,
             dioxus_html::Modifiers::empty(),
             false,
         );
         self.send(
-            field,
+            target,
             "keydown",
-            serde_json::to_value(key).expect("keyboard data"),
+            serde_json::to_value(data).expect("keyboard data"),
         );
         self.settle().await;
     }

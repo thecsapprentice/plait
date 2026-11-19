@@ -41,6 +41,7 @@ const SEEN: u8 = 2;
 const CHANNEL: u8 = 3;
 const SHOWN: u8 = 4;
 const PENDING: u8 = 5;
+const OPENED: u8 = 6;
 
 fn err(msg: impl Into<String>) -> CoreError {
     CoreError::Keys(quill_proto::codes::HISTORY_CHECK_FAILED, msg.into())
@@ -326,6 +327,18 @@ pub fn channels(store: &Store, gid: &[u8]) -> Result<Vec<ChannelInfo>, CoreError
         c.unseen = here.filter(|m| !m.own && m.seq > shown).count();
     }
     Ok(out)
+}
+
+/// Notes that this device has opened the session for its writer. Until
+/// then the session counts as new here, even with no notes to read (the
+/// requester's, whose only note is their own pitch).
+pub fn mark_opened(store: &Store, gid: &[u8]) -> Result<(), CoreError> {
+    put(&Provider::new(store), &key(gid, OPENED, &[]), &true)
+}
+
+/// Whether this device has opened the session yet.
+pub fn opened(store: &Store, gid: &[u8]) -> Result<bool, CoreError> {
+    Ok(get::<bool>(&Provider::new(store), &key(gid, OPENED, &[]))?.unwrap_or(false))
 }
 
 /// Notes that this device has shown `channel`'s notes up to `seq`.
@@ -629,6 +642,16 @@ mod tests {
         Provider::new(store)
             .atomically(|p| record(p, GID, f, a))
             .unwrap();
+    }
+
+    #[test]
+    fn a_session_is_new_until_opened_here() {
+        let store = Store::in_memory();
+        assert!(!opened(&store, GID).unwrap());
+        mark_opened(&store, GID).unwrap();
+        assert!(opened(&store, GID).unwrap());
+        // Per session.
+        assert!(!opened(&store, &[8u8; 32]).unwrap());
     }
 
     #[test]
