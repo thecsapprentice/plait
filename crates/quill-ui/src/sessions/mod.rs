@@ -14,6 +14,8 @@ use crate::{
     model::{Model, Section},
 };
 
+mod compose;
+mod live;
 mod reading;
 
 /// Loads the open server's sessions into the model.
