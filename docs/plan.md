@@ -657,13 +657,17 @@ Dioxus desktop runs the app in native Rust and sends DOM changes to the webview,
 
 ### Reading sessions in the desktop app (3f-1)
 
+- **Compare words sits to the side (#98).** On a request it's a small panel floated beside the pitch; on a prompt, where the pane is narrow, it shares a row with the ask button and wraps under it. A "What is this?" hint shows on hover or keyboard focus and is the button's description for screen readers.
+
 - **Sessions hold the per-server lock.** Reading a session catches up its MLS group, which may send (a commit adding another device, say). So every session call in `NativeBackend` takes `Open::exclusive`, as 3d's device-group work does.
 - **One list, loaded by upkeep.** The session list (with each one's standing and unread count) lives in the model and is reloaded on every live notice, after requests. Home, the side bar's count and the Sessions screen read the same list, so they always agree. An open session reads itself again whenever the list reloads.
+- **New until opened (#96).** A session counts as new on a computer until its page is shown there, even with nothing unread. That covers the requester, whose only note in a new session is their own pitch. Core keeps the mark (`history::mark_opened`) beside the per-channel shown marks. The side bar counts each session once for being new, or by its unread notes if it has any.
+- **Channels down the side (#97).** A session's channels are a vertical tab list beside its notes, each with its unread count, and above the notes on a narrow window. Up, Down, Home and End move between them, and only the shown channel is a Tab stop. The webview doesn't ring focus moved from code, so the label reached by the arrows carries `is-focus` until a click or blur.
 - **Shown is read, per channel.** Opening a channel marks its notes shown on this computer (`history::mark_shown`), up to the newest one shown. Another channel's notes stay unread, and its tab says how many. Read marks are per computer: another device of the same persona keeps its own.
 - **Standing is said, not hidden.** A session this computer can't read still lists, with what that means and what to do: another device hasn't added this one yet, the persona's keys aren't here, it was away too long and waits to be let back in, or a check failed (`Q-` code in advanced mode). An ended session stays readable.
 - **Times are local.** Notes carry a hybrid clock time in UTC. The app reads the computer's UTC offset once at start-up, before its runtime starts threads (the `time` crate refuses to read it later on Linux), and shows times in that zone.
 - **An answer names its note in plain words.** "In answer to" shows the answered note's first line with its Markdown marks taken out, and leads to the note, switching channel if needed.
-- **An accepted request leads to its session.** Requests don't carry the id of the session they began. The app finds it by the prompt and the two writers, the newest if several match. Until this computer has the session in its list (another device may not have added it yet), the button opens the list instead.
+- **An accepted request leads to its session.** Requests don't carry the id of the session they began. The app finds it by the prompt and the two writers, the newest if several match. Until this computer has the session in its list (another device may not have added it yet), the button opens the list instead. A click before the list has reloaded reads it first, so it doesn't fall back to the list just for being quick.
 
 ### Error codes (#76)
 
