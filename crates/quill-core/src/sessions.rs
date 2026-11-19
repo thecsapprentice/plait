@@ -1382,7 +1382,7 @@ async fn send(
     Err(err("the session kept changing; try again"))
 }
 
-fn check_text(text: &str) -> Result<&str, CoreError> {
+pub(crate) fn check_text(text: &str) -> Result<&str, CoreError> {
     let text = text.trim();
     if text.is_empty() {
         return Err(err("nothing to send"));

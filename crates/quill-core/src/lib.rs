@@ -10,6 +10,7 @@ pub mod attachments;
 pub mod backup;
 pub mod client;
 pub mod devices;
+pub mod drafts;
 pub mod history;
 pub mod history_sync;
 pub mod hlc;

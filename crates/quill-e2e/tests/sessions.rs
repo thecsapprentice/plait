@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use quill_certs::RevocationReason;
 use quill_core::{
-    Client, CoreError, Store, devices, keys, requests,
+    Client, CoreError, Store, devices, drafts, keys, requests,
     sessions::{self, Message, Standing},
 };
 use quill_e2e::{TEST_PASSWORD as PASSWORD, TestServer};
@@ -391,6 +391,67 @@ async fn leaving_ends_the_session_for_both() {
     let listed = sessions::list(&laptop, &alice_c).await.unwrap();
     let s = listed.iter().find(|l| l.session.id == id2).unwrap();
     assert!(s.session.ended && s.partner().is_none());
+    server.stop().await.unwrap();
+}
+
+/// 3f-2: notes written offline wait in the outbox, go in order once the
+/// server can be reached, and stop at a refusal so none overtakes it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queued_notes_go_in_order_and_stop_at_a_refusal() {
+    let server = server!();
+    let alice_c = server.account("alice").await.unwrap();
+    let (fox, laptop) = writer(&alice_c, "ink_fox").await;
+    let bob_c = server.account("bob").await.unwrap();
+    let (wren, bob) = writer(&bob_c, "quiet_wren").await;
+    let id = session((&laptop, &alice_c, &fox), (&bob, &bob_c, &wren)).await;
+    sync(&laptop, &alice_c).await;
+    sync(&bob, &bob_c).await;
+    let gid = quill_proto::keys::unb64(&id).unwrap();
+
+    // Offline: nothing goes, and nothing is lost.
+    let first = drafts::queue(&laptop, &gid, "story", "The lamp went out.", None).unwrap();
+    let second = drafts::queue(&laptop, &gid, "planning", "Shall I go on?", Some(1)).unwrap();
+    let token = server
+        .client()
+        .login(&quill_proto::api::Credentials {
+            username: "alice".into(),
+            password: PASSWORD.into(),
+        })
+        .await
+        .unwrap()
+        .token;
+    let away = Client::new("http://127.0.0.1:9")
+        .unwrap()
+        .with_token(&token);
+    let done = drafts::flush(&laptop, &away, &id, &gid).await.unwrap();
+    assert!(done.offline && done.sent.is_empty());
+    assert_eq!(drafts::queued(&laptop, &gid).unwrap().len(), 2);
+
+    // Back online: both go, in order.
+    let done = drafts::flush(&laptop, &alice_c, &id, &gid).await.unwrap();
+    assert_eq!(
+        done.sent.iter().map(|s| s.0).collect::<Vec<_>>(),
+        [first.id, second.id]
+    );
+    assert!(drafts::queued(&laptop, &gid).unwrap().is_empty());
+    assert_eq!(
+        texts(&bob, &bob_c, &id).await,
+        [PITCH, "The lamp went out.", "Shall I go on?"]
+    );
+
+    // A refusal keeps the note, marked, and the next waits behind it.
+    sessions::leave(&bob, &bob_c, &id).await.unwrap();
+    let refused = drafts::queue(&laptop, &gid, "story", "Hello?", None).unwrap();
+    drafts::queue(&laptop, &gid, "story", "Anyone?", None).unwrap();
+    let done = drafts::flush(&laptop, &alice_c, &id, &gid).await.unwrap();
+    assert_eq!(done.refused, Some(refused.id));
+    let waiting = drafts::queued(&laptop, &gid).unwrap();
+    assert_eq!(waiting.len(), 2);
+    let why = waiting[0].refused.as_ref().unwrap();
+    assert!(why.detail.contains("ended"), "{}", why.detail);
+    // Still refused on the next try, without sending the one behind it.
+    let done = drafts::flush(&laptop, &alice_c, &id, &gid).await.unwrap();
+    assert_eq!((done.refused, done.sent.len()), (Some(refused.id), 0));
     server.stop().await.unwrap();
 }
 
