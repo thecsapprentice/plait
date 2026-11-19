@@ -258,7 +258,7 @@ async fn sessions() {
     d.wait_for_text("Chapter one.").await;
     d.assert_accessible("a session, reading");
     d.click_containing("Planning").await;
-    d.wait_for_text("In answer to").await;
+    d.wait_for_text("About chapter one.").await;
     d.assert_accessible("a session, another channel");
 
     // Writing (3f-2): answering, a note waiting offline, focus mode.

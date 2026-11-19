@@ -425,16 +425,20 @@ fn NoteItem(
                     button {
                         class: "quiet note-action",
                         aria_label: "Answer {author} note",
+                        title: "Answer",
                         onclick: move |_| on_reply.call(seq),
-                        "Answer"
+                        span { aria_hidden: "true", "↩" }
                     }
                 }
             }
             if let Some((to, (ch, first))) = answering {
                 button {
                     class: "link answering",
+                    aria_label: "In answer to: {first}",
+                    title: "In answer to",
                     onclick: move |_| on_answer.call((to, ch.clone())),
-                    "In answer to: {first}"
+                    span { class: "reply-mark", aria_hidden: "true", "↩ " }
+                    "{first}"
                 }
             }
             if n.deleted {

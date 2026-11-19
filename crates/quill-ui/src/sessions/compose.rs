@@ -364,7 +364,11 @@ pub fn Composer(
             }
             if let Some(line) = answering_line {
                 div { class: "answering-now",
-                    span { "In answer to {line}" }
+                    span {
+                        span { class: "sr-only", "In answer to " }
+                        span { class: "reply-mark", aria_hidden: "true", "↩ " }
+                        "{line}"
+                    }
                     button {
                         class: "quiet",
                         onclick: move |_| answering.set(None),

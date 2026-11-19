@@ -86,10 +86,12 @@ async fn answering_a_note_says_which_and_can_stop() {
     let asked = sim.write_as(SERVER, &id, "wren", "story", "Chapter one, at *sea*?");
     d.wait_for_text("Chapter one, at").await;
     d.click("Answer @wren's note").await;
-    d.wait_for_text("In answer to @wren: Chapter one, at sea?")
-        .await;
+    // Found by hand: "Answer" in words was too much; it's an arrow, named
+    // for screen readers, and the line above the editor uses it too.
+    assert!(d.has_text("↩"));
+    d.wait_for_text("@wren: Chapter one, at sea?").await;
     d.click("Stop answering").await;
-    assert!(!d.has_text("In answer to @wren"));
+    assert!(!d.has_text("@wren: Chapter one, at sea?"));
 
     d.click("Answer @wren's note").await;
     d.type_into(EDITOR, "Yes, and a storm.").await;
@@ -100,7 +102,7 @@ async fn answering_a_note_says_which_and_can_stop() {
         (last.2.as_str(), last.3),
         ("Yes, and a storm.", Some(asked))
     );
-    assert!(!d.has_text("In answer to @wren: Chapter"));
+    assert!(!d.has_text("@wren: Chapter one, at sea?"));
 }
 
 #[tokio::test]
@@ -135,7 +137,7 @@ async fn drafts_stay_with_their_channel_and_the_app() {
         d.attr(EDITOR, "value").as_deref(),
         Some("Half a sentence about the")
     );
-    assert!(d.has_text("In answer to @wren: Who rang the bell?"));
+    assert!(d.has_text("@wren: Who rang the bell?"));
     d.click("Planning ✎ draft").await;
     assert_eq!(
         d.attr(EDITOR, "value").as_deref(),

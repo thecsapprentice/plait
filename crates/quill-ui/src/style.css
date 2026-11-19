@@ -512,7 +512,8 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 
 /* Writing (3f-2). Every editor form shares .writing, so the Live mirror
    and its text area match to the pixel (spike finding 3). */
-.note .note-action { margin-left: auto; min-height: auto; padding: 0 var(--space-2); font-size: var(--text-sm); }
+.note .note-action { margin-left: auto; min-height: auto; padding: 0 var(--space-2); font-size: var(--text-lg); line-height: 1; }
+.reply-mark { color: var(--muted); }
 .note.waiting { border-left: 3px solid var(--warn); padding-left: var(--space-3); }
 .note.waiting.refused { border-left-color: var(--bad); }
 .waiting-notes { margin-top: var(--space-4); }
