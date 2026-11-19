@@ -15,7 +15,7 @@ use crate::{
 };
 
 mod compose;
-mod live;
+pub(crate) mod live;
 mod reading;
 
 /// Loads the open server's sessions into the model.

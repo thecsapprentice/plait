@@ -121,3 +121,44 @@ fn a_tabs_unread_badge_keeps_apart_from_its_name() {
         .expect("a .channels .badge rule");
     assert!(rule.contains("margin-left"), "{rule}");
 }
+
+/// Found by hand (3f-2): the Live mirror's `code` span took the app's
+/// `.code` style (smaller, monospace), so its characters were narrower than
+/// the text area's and the two drifted apart. The mirror's classes are its
+/// own: the stylesheet styles them only inside `.mirror`.
+#[test]
+fn the_live_mirror_s_classes_are_styled_only_inside_it() {
+    let classes = crate::sessions::live::CLASSES;
+    for class in classes {
+        let needle = format!(".{class}");
+        let mut at = 0;
+        while let Some(i) = crate::STYLE[at..].find(&needle) {
+            let start = at + i;
+            let end = start + needle.len();
+            let next = crate::STYLE[end..].chars().next().unwrap_or(' ');
+            if !(next.is_alphanumeric() || next == '-' || next == '_') {
+                let before = &crate::STYLE[..start];
+                assert!(
+                    before.ends_with(".mirror "),
+                    "`{needle}` is styled outside the mirror"
+                );
+            }
+            at = end;
+        }
+    }
+}
+
+/// Found by hand (3f-2): in focus mode the editor sat at the left of the
+/// window, held there by the page column's width. The page widens, so the
+/// editor's own width and auto margins centre it.
+#[test]
+fn focus_mode_centres_the_editor() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".frame.focus .page").contains("max-width: none"));
+    assert!(rule(".frame.focus .composer").contains("margin: var(--space-6) auto 0"));
+}

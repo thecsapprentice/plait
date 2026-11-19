@@ -538,13 +538,13 @@ textarea.over { color: transparent; caret-color: var(--ink); background: transpa
 textarea.over::placeholder { color: var(--muted); }
 textarea.over::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: transparent; }
 /* Styles that don't change any character's width, so the text lines up. */
-.mirror .mk { color: var(--muted); }
-.mirror .heading { color: var(--accent); text-shadow: 0.015em 0 0 currentColor; }
-.mirror .strong { text-shadow: 0.02em 0 0 currentColor; }
-.mirror .em { color: var(--accent); }
-.mirror .code { background: var(--paper); border-radius: 3px; }
-.mirror .quote { color: var(--muted); }
-.mirror .link { color: var(--accent); text-decoration: underline; text-decoration-color: var(--line); }
+.mirror .md-mark { color: var(--muted); }
+.mirror .md-heading { color: var(--accent); text-shadow: 0.015em 0 0 currentColor; }
+.mirror .md-strong { text-shadow: 0.02em 0 0 currentColor; }
+.mirror .md-em { color: var(--accent); }
+.mirror .md-code { background: var(--paper); border-radius: 3px; }
+.mirror .md-quote { color: var(--muted); }
+.mirror .md-link { color: var(--accent); text-decoration: underline; text-decoration-color: var(--line); }
 .composer-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .composer-tools { display: flex; gap: var(--space-1); margin-right: auto; }
 .limit { font-size: var(--text-sm); color: var(--muted); }
@@ -557,6 +557,7 @@ textarea.over::selection { background: color-mix(in srgb, var(--accent) 28%, tra
 .frame.focus .nav, .frame.focus .session-head, .frame.focus .channels,
 .frame.focus .channel > .hint, .frame.focus .channel > .coming,
 .frame.focus .notes:not(.waiting-notes) { display: none; }
+.frame.focus .page { max-width: none; }
 .frame.focus .session-body { grid-template-columns: minmax(0, 1fr); margin-top: 0; }
 .frame.focus .channel { max-width: none; }
 .frame.focus .composer { width: min(46rem, 100%); margin: var(--space-6) auto 0; border-top: 0; padding-top: 0; }

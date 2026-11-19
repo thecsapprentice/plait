@@ -6,16 +6,29 @@
 
 use dioxus::prelude::*;
 
+/// The classes the mirror's spans use, each styled only inside `.mirror`
+/// so no other rule changes a character's width.
+pub const CLASSES: [&str; 7] = [
+    "md-mark",
+    "md-strong",
+    "md-em",
+    "md-code",
+    "md-link",
+    "md-heading",
+    "md-quote",
+];
+
 /// A run of source characters and how it's styled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Span {
-    /// `mk` (a mark like `**` or `#`), `strong`, `em`, `code`, `link`,
-    /// `heading`, `quote`, or empty for plain text.
+    /// One of [`CLASSES`] (`md-mark` for a mark like `**` or `#`), or
+    /// empty for plain text.
     pub class: &'static str,
     pub text: String,
 }
 
 fn push(out: &mut Vec<Span>, class: &'static str, text: &str) {
+    debug_assert!(class.is_empty() || CLASSES.contains(&class), "{class}");
     if text.is_empty() {
         return;
     }
@@ -44,28 +57,28 @@ fn inline(line: &str, base: &'static str, out: &mut Vec<Span>) {
         let found = if rest.starts_with(&['*', '*']) {
             find(i + 2, &['*', '*'])
                 .filter(|&e| e > i + 2)
-                .map(|e| (2, "strong", e, 2))
+                .map(|e| (2, "md-strong", e, 2))
         } else if rest.starts_with(&['`']) {
             find(i + 1, &['`'])
                 .filter(|&e| e > i + 1)
-                .map(|e| (1, "code", e, 1))
+                .map(|e| (1, "md-code", e, 1))
         } else if (rest[0] == '*' || rest[0] == '_')
             && chars.get(i + 1).is_some_and(|c| !c.is_whitespace())
         {
             find(i + 1, &[rest[0]])
                 .filter(|&e| e > i + 1)
-                .map(|e| (1, "em", e, 1))
+                .map(|e| (1, "md-em", e, 1))
         } else if rest[0] == '[' {
             find(i + 1, &[']', '('])
-                .and_then(|mid| find(mid + 2, &[')']).map(|end| (1, "link", mid, end + 1 - mid)))
+                .and_then(|mid| find(mid + 2, &[')']).map(|end| (1, "md-link", mid, end + 1 - mid)))
         } else {
             None
         };
         match found {
             Some((open, class, body_end, close)) => {
-                push(out, "mk", &text(i, i + open));
+                push(out, "md-mark", &text(i, i + open));
                 push(out, class, &text(i + open, body_end));
-                push(out, "mk", &text(body_end, body_end + close));
+                push(out, "md-mark", &text(body_end, body_end + close));
                 i = body_end + close;
             }
             None => {
@@ -82,22 +95,22 @@ fn style_line(line: &str, fenced: &mut bool) -> Vec<Span> {
     let indent = line.len() - trimmed.len();
     if trimmed.starts_with("```") {
         *fenced = !*fenced;
-        push(&mut out, "mk", line);
+        push(&mut out, "md-mark", line);
         return out;
     }
     if *fenced {
-        push(&mut out, "code", line);
+        push(&mut out, "md-code", line);
         return out;
     }
     let hashes = trimmed.chars().take_while(|c| *c == '#').count();
     if (1..=6).contains(&hashes) && trimmed[hashes..].starts_with(' ') {
-        push(&mut out, "mk", &line[..indent + hashes]);
-        inline(&line[indent + hashes..], "heading", &mut out);
+        push(&mut out, "md-mark", &line[..indent + hashes]);
+        inline(&line[indent + hashes..], "md-heading", &mut out);
         return out;
     }
     if trimmed.starts_with('>') {
-        push(&mut out, "mk", &line[..indent + 1]);
-        inline(&line[indent + 1..], "quote", &mut out);
+        push(&mut out, "md-mark", &line[..indent + 1]);
+        inline(&line[indent + 1..], "md-quote", &mut out);
         return out;
     }
     inline(line, "", &mut out);
@@ -168,15 +181,15 @@ mod tests {
         assert_eq!(
             classes,
             [
-                ("mk", "##"),
-                ("heading", " A "),
-                ("mk", "**"),
-                ("strong", "bold"),
-                ("mk", "**"),
-                ("heading", " "),
-                ("mk", "_"),
-                ("em", "turn"),
-                ("mk", "_"),
+                ("md-mark", "##"),
+                ("md-heading", " A "),
+                ("md-mark", "**"),
+                ("md-strong", "bold"),
+                ("md-mark", "**"),
+                ("md-heading", " "),
+                ("md-mark", "_"),
+                ("md-em", "turn"),
+                ("md-mark", "_"),
             ]
         );
     }
