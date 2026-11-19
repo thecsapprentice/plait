@@ -813,8 +813,13 @@ impl Backend for Sim {
     fn upkeep(&self) -> Call<'_, Option<Problem>> {
         // A removal by another device is learnt here, as quill-core's
         // catch-up learns it: the keys go then.
+        // Notes written offline go too, as quill-core's `flush_all` sends them.
         now(self.reach().map(|_| {
-            self.sim_catch_up().then(|| {
+            let removed = self.sim_catch_up();
+            if !removed {
+                self.sim_flush_all();
+            }
+            removed.then(|| {
                 refused(
                     codes::REMOVED_HERE,
                     "This computer was removed from your devices. Link it again to keep writing here.",
@@ -905,6 +910,41 @@ impl Backend for Sim {
 
     fn mark_opened(&self, id: &str) -> Result<(), Problem> {
         self.sim_mark_opened(id)
+    }
+
+    fn draft(&self, id: &str, channel: &str) -> Result<crate::backend::Draft, Problem> {
+        self.sim_draft(id, channel)
+    }
+
+    fn save_draft(
+        &self,
+        id: &str,
+        channel: &str,
+        d: &crate::backend::Draft,
+    ) -> Result<(), Problem> {
+        self.sim_save_draft(id, channel, d)
+    }
+
+    fn send_note<'a>(
+        &'a self,
+        id: &'a str,
+        channel: &'a str,
+        text: &'a str,
+        reply_to: Option<u64>,
+    ) -> Call<'a, crate::backend::Sending> {
+        now(self.sim_send_note(id, channel, text, reply_to))
+    }
+
+    fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::Sending> {
+        now(self.sim_flush(id, None))
+    }
+
+    fn change_waiting(&self, id: &str, note: Uuid, text: &str) -> Result<(), Problem> {
+        self.sim_change_waiting(id, note, text)
+    }
+
+    fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem> {
+        self.sim_withdraw_waiting(id, note)
     }
 
     fn answers_seen(&self) -> Vec<Uuid> {

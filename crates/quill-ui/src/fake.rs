@@ -321,6 +321,30 @@ impl Backend for Fake {
     fn mark_opened(&self, _: &str) -> Result<(), Problem> {
         Ok(())
     }
+    fn draft(&self, _: &str, _: &str) -> Result<crate::backend::Draft, Problem> {
+        Ok(crate::backend::Draft::default())
+    }
+    fn save_draft(&self, _: &str, _: &str, _: &crate::backend::Draft) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn send_note<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a str,
+        _: &'a str,
+        _: Option<u64>,
+    ) -> Call<'a, crate::backend::Sending> {
+        Box::pin(async { Ok(crate::backend::Sending::Sent) })
+    }
+    fn send_waiting<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::Sending> {
+        Box::pin(async { Ok(crate::backend::Sending::Sent) })
+    }
+    fn change_waiting(&self, _: &str, _: Uuid, _: &str) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn withdraw_waiting(&self, _: &str, _: Uuid) -> Result<(), Problem> {
+        Ok(())
+    }
     fn upkeep(&self) -> Call<'_, Option<Problem>> {
         ready(Ok(None))
     }
