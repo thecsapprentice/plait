@@ -58,21 +58,21 @@ pub fn AskToWrite(prompt: Prompt) -> Element {
     };
     if sent() {
         return rsx! {
+            CompareWords { handle: author.clone(), as_persona: persona }
             p { class: "hint", role: "status",
                 "Request sent. Only @{author}'s devices can read your pitch. Their answer will show on Requests and Home."
             }
             div { class: "actions",
                 button { class: "quiet", onclick: move |_| model.write().open_requests(None), "See your requests" }
             }
-            CompareWords { handle: author.clone(), as_persona: persona }
         };
     }
     if !open() {
         return rsx! {
+            CompareWords { handle: author.clone(), as_persona: persona }
             div { class: "actions",
                 button { class: "secondary", onclick: move |_| open.set(true), "Ask to write together" }
             }
-            CompareWords { handle: author.clone(), as_persona: persona }
         };
     }
 

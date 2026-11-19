@@ -229,10 +229,11 @@ fn Incoming(
             p { class: "hint", "Arrived {arrived}. It lapses on {lapses} if it isn't answered." }
             match r.pitch.clone() {
                 Ok(text) => rsx! {
-                    div { class: "pitch", Markdown { source: text } }
+                    // Off to the side of the pitch.
                     if let Some(me) = author {
                         CompareWords { handle: handle.clone(), as_persona: me }
                     }
+                    div { class: "pitch", Markdown { source: text } }
                 },
                 Err(Unread::KeyChanged) => rsx! {
                     if skipped() {

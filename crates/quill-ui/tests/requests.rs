@@ -534,6 +534,14 @@ async fn both_writers_find_their_words_where_they_meet() {
     let mut d = signed_in(&sim).await;
     // On another writer's prompt.
     reading(&sim, &mut d, "wren", "The lighthouse ledger").await;
+    // A hint says what they're for, on hover or focus, and is read out.
+    assert!(d.has_button("What is this?"));
+    assert_eq!(
+        d.attr("words-info-wren", "aria-describedby").as_deref(),
+        Some("words-tip-wren")
+    );
+    assert_eq!(d.attr("words-tip-wren", "role").as_deref(), Some("tooltip"));
+    assert!(d.has_text("lets you make sure they are who they say they are"));
     d.click("Compare words with @wren").await;
     d.wait_for_text("@wren sees these same 12 words").await;
     assert!(words_shown(&d, &sim, "ink_fox", "wren"));
@@ -547,6 +555,7 @@ async fn both_writers_find_their_words_where_they_meet() {
     d.wait_for_text("A request is waiting").await;
     d.click("Read them").await;
     d.wait_for_text(PITCH).await;
+    assert!(d.has_button("What is this?"));
     d.click("Compare words with @gull").await;
     d.wait_for_text("@gull sees these same 12 words").await;
     assert!(words_shown(&d, &sim, "ink_fox", "gull"));
