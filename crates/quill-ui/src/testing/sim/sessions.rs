@@ -5,7 +5,7 @@
 //! log); edits keep every version; a deletion keeps them too. This
 //! computer keeps how far it has shown each channel, and its standing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -58,6 +58,8 @@ pub(super) struct Sessions {
 pub(super) struct Here {
     shown: HashMap<(String, String), u64>,
     standing: HashMap<String, SessionStanding>,
+    /// Sessions opened in this store, as `history::mark_opened` keeps.
+    opened: HashSet<String>,
 }
 
 fn base_time() -> OffsetDateTime {
@@ -313,6 +315,7 @@ impl Sim {
             notes: s.notes.len(),
             unseen: channels.iter().map(|c| c.unseen).sum(),
             latest: s.notes.last().map(|n| n.at),
+            opened: here.opened.contains(&s.id),
         }
     }
 
@@ -428,6 +431,13 @@ impl Sim {
                 .entry((id.to_owned(), channel.to_owned()))
                 .or_default();
             *e = (*e).max(upto);
+        });
+        Ok(())
+    }
+
+    pub(super) fn sim_mark_opened(&self, id: &str) -> Result<(), Problem> {
+        self.with_server_mut(|_, store| {
+            store.sessions.opened.insert(id.to_owned());
         });
         Ok(())
     }

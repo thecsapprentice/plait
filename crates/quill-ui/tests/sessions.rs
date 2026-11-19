@@ -103,6 +103,47 @@ async fn an_accepted_request_becomes_a_session_that_opens_with_the_pitch() {
     assert!(d.has_text("You"));
 }
 
+/// Found by hand: the requester's new session showed no count, since its
+/// only note is their own pitch. A session not yet opened here counts.
+#[tokio::test]
+async fn a_new_session_counts_until_opened_even_with_nothing_unread() {
+    let sim = sim();
+    let mut d = signed_in(&sim).await;
+    sim.post_as(
+        SERVER,
+        "wren",
+        "The ledger",
+        "A keeper's ledger.",
+        &[],
+        quill_proto::board::Maturity::General,
+    );
+    d.click("Board").await;
+    d.wait_for_text("The ledger").await;
+    d.click_containing("The ledger").await;
+    d.click("Ask to write together").await;
+    d.type_into("request-pitch", "I'd write the keeper.").await;
+    d.click("Send request").await;
+    d.wait_for_text("Request sent.").await;
+    let request = sim.requests_on(SERVER)[0].0;
+    sim.answer_request(SERVER, request, true);
+
+    d.wait_until("the new session's count", |d| {
+        d.has_button("Sessions 1 unread")
+    })
+    .await;
+    d.click("Sessions 1 unread").await;
+    d.wait_for_text("On “The ledger”").await;
+    assert!(d.has_text("New"));
+    d.click("Open the session with @wren on “The ledger”").await;
+    d.wait_for_text("Writing with @wren").await;
+    // Opened here, so it isn't new any more.
+    d.wait_until("the count clears", |d| d.has_button("Sessions"))
+        .await;
+    d.click("‹ All sessions").await;
+    d.wait_for_text("On “The ledger”").await;
+    assert!(!d.has_text("New"));
+}
+
 #[tokio::test]
 async fn notes_arrive_live_and_their_counts_clear_once_read() {
     let sim = sim();
@@ -184,7 +225,8 @@ async fn a_session_this_computer_cant_read_says_why() {
     let (mut d, id) = with_a_session(&sim).await;
     sim.set_session_standing(&id, SessionStanding::Waiting);
     d.click("Board").await;
-    d.click("Sessions").await;
+    // New until opened, though there's nothing this computer can read.
+    d.click("Sessions 1 unread").await;
     d.wait_for_text("This computer isn't in it yet.").await;
     d.click("Open the session with @wren on “The ledger”").await;
     d.wait_for_text("isn't in the session yet").await;

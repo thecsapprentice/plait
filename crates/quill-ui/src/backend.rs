@@ -437,6 +437,9 @@ pub struct SessionSummary {
     pub unseen: usize,
     /// When the latest note was written.
     pub latest: Option<time::OffsetDateTime>,
+    /// Whether this computer has opened it yet. Until then it's new here,
+    /// even with nothing unread (the requester's only note is their pitch).
+    pub opened: bool,
 }
 
 /// A channel in a session.
@@ -662,6 +665,8 @@ pub trait Backend {
     /// Notes this computer has shown a channel's notes up to `upto`, for the
     /// unread counts. Kept only on this computer.
     fn mark_shown<'a>(&'a self, id: &'a str, channel: &'a str, upto: u64) -> Result<(), Problem>;
+    /// Notes this computer has opened the session, so it's no longer new.
+    fn mark_opened(&self, id: &str) -> Result<(), Problem>;
 
     // ---- Upkeep and settings --------------------------------------------------------------
 

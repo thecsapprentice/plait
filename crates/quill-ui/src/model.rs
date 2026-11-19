@@ -150,9 +150,13 @@ pub struct Sessions {
 }
 
 impl Sessions {
-    /// Notes not yet shown here, across every session.
+    /// What the side bar counts: notes not yet shown here, and one for each
+    /// session not yet opened here that has none to read.
     pub fn unseen(&self) -> usize {
-        self.list.iter().map(|s| s.unseen).sum()
+        self.list
+            .iter()
+            .map(|s| s.unseen.max(usize::from(!s.opened)))
+            .sum()
     }
 }
 

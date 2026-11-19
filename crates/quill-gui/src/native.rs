@@ -278,6 +278,7 @@ fn summary(
     prompt: Option<(Uuid, String)>,
     channels: &[history::ChannelInfo],
     latest: Option<time::OffsetDateTime>,
+    opened: bool,
 ) -> SessionSummary {
     let me = s.members.iter().find(|m| m.persona.is_some());
     SessionSummary {
@@ -293,6 +294,7 @@ fn summary(
         notes: channels.iter().map(|c| c.notes).sum(),
         unseen: channels.iter().map(|c| c.unseen).sum(),
         latest,
+        opened,
     }
 }
 
@@ -1578,6 +1580,7 @@ impl Backend for NativeBackend {
                             prompt,
                             &channels,
                             latest,
+                            history::opened(store, &gid)?,
                         ));
                     }
                     out.sort_by_key(|s| std::cmp::Reverse(s.latest));
@@ -1628,8 +1631,16 @@ impl Backend for NativeBackend {
                         })
                         .collect::<Vec<_>>();
                     let latest = notes.last().map(|n| n.at);
+                    let opened = history::opened(store, &gid)?;
                     Ok(SessionView {
-                        summary: summary(s, SessionStanding::Joined, prompt, &channels, latest),
+                        summary: summary(
+                            s,
+                            SessionStanding::Joined,
+                            prompt,
+                            &channels,
+                            latest,
+                            opened,
+                        ),
                         channels: channels.iter().map(channel_view).collect(),
                         notes,
                         held_back: !reading.gaps.is_empty(),
@@ -1646,6 +1657,12 @@ impl Backend for NativeBackend {
         let open = self.opened()?;
         let gid = quill_proto::keys::unb64(id).ok_or_else(|| failed("bad session id"))?;
         history::mark_shown(&open.store, &gid, channel, upto).map_err(|e| problem(&open.name, e))
+    }
+
+    fn mark_opened(&self, id: &str) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let gid = quill_proto::keys::unb64(id).ok_or_else(|| failed("bad session id"))?;
+        history::mark_opened(&open.store, &gid).map_err(|e| problem(&open.name, e))
     }
 
     fn answers_seen(&self) -> Vec<Uuid> {

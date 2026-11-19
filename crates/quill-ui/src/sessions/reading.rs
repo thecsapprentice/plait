@@ -50,6 +50,21 @@ pub fn SessionPage(id: String) -> Element {
             view.set(Some(result));
         });
     });
+    // Opening it here means it's no longer new, even if this computer
+    // can't read it yet: the writer has seen why.
+    let b = backend.clone();
+    let sid = id.clone();
+    use_hook(move || {
+        let new = model
+            .peek()
+            .sessions
+            .list
+            .iter()
+            .any(|s| s.id == sid && !s.opened);
+        if new && b.mark_opened(&sid).is_ok() {
+            reload(b, model);
+        }
+    });
     // Showing a channel marks its notes read here, then the counts follow.
     let b = backend.clone();
     let sid = id.clone();

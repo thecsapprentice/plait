@@ -318,6 +318,9 @@ impl Backend for Fake {
     fn mark_shown<'a>(&'a self, _: &'a str, _: &'a str, _: u64) -> Result<(), Problem> {
         Ok(())
     }
+    fn mark_opened(&self, _: &str) -> Result<(), Problem> {
+        Ok(())
+    }
     fn upkeep(&self) -> Call<'_, Option<Problem>> {
         ready(Ok(None))
     }

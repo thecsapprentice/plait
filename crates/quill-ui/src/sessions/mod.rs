@@ -140,6 +140,9 @@ fn SessionRow(s: SessionSummary) -> Element {
                 if s.unseen > 0 {
                     span { class: "badge", "{new_notes(s.unseen)}" }
                 }
+                if !s.opened {
+                    span { class: "tag new", "New" }
+                }
                 if s.ended {
                     span { class: "tag", "Ended" }
                 }

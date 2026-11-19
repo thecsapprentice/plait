@@ -881,6 +881,10 @@ impl Backend for Sim {
         self.sim_mark_shown(id, channel, upto)
     }
 
+    fn mark_opened(&self, id: &str) -> Result<(), Problem> {
+        self.sim_mark_opened(id)
+    }
+
     fn answers_seen(&self) -> Vec<Uuid> {
         self.open_store()
             .map(|(_, s, _)| s.requests.answers_seen)
