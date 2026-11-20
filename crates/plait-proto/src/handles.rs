@@ -140,6 +140,8 @@ pub const DEFAULT_WORDS: &[&str] = &[
     "root",
     "superuser",
     "plait",
+    // The project's name before the rebrand, so no one can pass for it.
+    "quill",
     "security",
     "abuse",
     "operator",
@@ -344,6 +346,7 @@ mod tests {
             "m0derator",
             "supp0rt",
             "the_plait",
+            "the_quill",
             "r00t",
             "everyone",
             "no_reply",
