@@ -1,8 +1,9 @@
 # Rebranding Quill as Plait
 
-Status: proposed. Decided 2026-11-02: the project is renamed **Plait**,
-and its art and voice come from weaving. The interface keeps writing
-words. This document records what the
+Status: decided 2026-11-02, and being carried out under the epic
+[#81](https://github.com/thecsapprentice/quill/issues/81). The project
+is renamed **Plait**, and its art and voice come from weaving. The
+interface keeps writing words. This document records what the
 rename covers, which words change where, and how to carry it out. The
 brand assets and their usage rules are in
 [`assets/brand/README.md`](../assets/brand/README.md).
@@ -177,15 +178,19 @@ scripts/rebrand-to-plait.sh brand    # every other quill/Quill/QUILL outside the
 scripts/rebrand-to-plait.sh audit    # what's left, which should be only the keep list
 ```
 
-Tried on `main` at 08cea36: the two phases change 280 files. `cargo
-metadata` resolves all eleven renamed packages. The audit then lists only
-the keep list below plus `test-vectors/*.json`, which is regenerated.
-Nothing was compiled, because the pinned toolchain wasn't available where
-this was tried, so CI is the check.
+Tried again on `main` at 44da5fa (2026-11-19, after 3f): the `crates`
+phase changes 295 files and `brand` 117, 302 in all. The renamed
+workspace builds and passes `cargo clippy --workspace --all-targets -D
+warnings`. Its unit tests pass except the three vector checks whose
+files carry or hash the old labels (`backup`, `json-objects`,
+`linking`), which R3 regenerates. The audit then lists only the keep
+list below plus `test-vectors/*.json`.
 
 ### The keep list (left saying "quill" on purpose)
 
-- `spikes/` and `docs/design/`: dated records of past work.
+- `docs/design/`: dated records of past work. (The 3a spike in
+  `spikes/` was removed in 3f-3; its findings live in `docs/plan.md` and
+  are renamed with everything else.)
 - Migrations `0001`–`0029`. sqlx checksums applied migrations, so even a
   comment edit breaks every existing database. New names go in a new
   migration.
@@ -196,9 +201,14 @@ this was tried, so CI is the check.
 - The reserved-handle defaults keep **quill** alongside the new **plait**,
   so nobody can pass for the old name either.
 
-### Issues to open
+### The steps
 
-**Epic: Rebrand to Plait** (labelled `epic`), with these as sub-issues:
+Each is a sub-issue of the epic
+[#81](https://github.com/thecsapprentice/quill/issues/81), in this
+order: R1 (#82), the first part of R9 (#90), R2 (#83), R3 (#84), then R4
+to R8 (#85 to #89) and the rest of R9. Identifiers added before the
+rename that the script can't find are marked `REBRAND(R3)` in the code
+and listed on #84.
 
 **R1: Brand assets and this guide.** Scope: `assets/brand/`, this
 document, the rename script. Done when: merged; the asset README and this

@@ -14,14 +14,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Never rewritten:
-#  - spikes/ and docs/design/: dated records of past work.
+#  - docs/design/: dated records of past work.
 #  - migrations 0001-0029: already applied; new names go in a new migration.
 #  - test-vectors/*.json: regenerated from code (PLAIT_WRITE_VECTORS=1), never
 #    edited, because some vectors hash or encrypt the old labels.
 #  - words.rs: its test uses "quill" as a word that isn't in the BIP-39 list.
 #  - assets/brand and this script, which talk about the rename.
 EXCLUDE=(
-  ':!spikes/**'
   ':!docs/design/**'
   ':!crates/*/migrations/**'
   ':!test-vectors/*.json'
@@ -66,7 +65,7 @@ phase_brand() {
 
 phase_audit() {
   echo "Still saying quill (each should be in the guide's keep list):"
-  git grep -nIi quill -- . ':!spikes/**' ':!docs/design/**' ':!assets/brand/**' \
+  git grep -nIi quill -- . ':!docs/design/**' ':!assets/brand/**' \
     ':!scripts/rebrand-to-plait.sh' ':!docs/rebrand-plait.md' || true
 }
 
