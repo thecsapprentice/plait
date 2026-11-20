@@ -224,3 +224,16 @@ fn write_and_preview_boxes_are_each_as_wide_as_live() {
     assert!(rule(".frame.focus .composer").contains("var(--width-focus)"));
     assert!(rule(".frame.focus .composer:has(.split)").contains("2 * var(--width-focus)"));
 }
+
+/// Found by hand (3f-2): Write and preview's text area stayed a fixed
+/// height while Live grew with its text. The webview sizes it, up to
+/// Live's height, so typing does no more work than before.
+#[test]
+fn the_plain_editor_grows_like_live() {
+    let rule = crate::STYLE
+        .lines()
+        .find(|l| l.starts_with(".split textarea {"))
+        .expect("a `.split textarea` rule");
+    assert!(rule.contains("field-sizing: content"), "{rule}");
+    assert!(rule.contains("max-height: 60vh"), "{rule}");
+}

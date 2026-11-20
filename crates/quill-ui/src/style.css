@@ -533,10 +533,13 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .writing { font-family: var(--write); font-size: var(--text-read); line-height: 1.6; letter-spacing: normal; padding: var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-s); margin: 0; width: 100%; box-sizing: border-box; min-height: 8rem; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; color: var(--ink); }
 textarea.writing { resize: vertical; background: var(--surface); display: block; }
 .split { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
-.split textarea { min-height: 12rem; }
 @container (min-width: 44rem) {
   .split:not(.single) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
+/* Write and preview's text area grows with its text as Live does, sized
+   by the webview: a mirror behind it would re-render on every key, which
+   is what this form avoids. Where unsupported, it can be dragged. */
+.split textarea { field-sizing: content; max-height: 60vh; overflow: auto; }
 .preview { padding: var(--space-3); border: 1px dashed var(--edge); border-radius: var(--radius-s); overflow: auto; max-height: 60vh; }
 /* Its first line lines up with the editor's beside it. */
 .split .preview .markdown > :first-child { margin-top: 0; }
