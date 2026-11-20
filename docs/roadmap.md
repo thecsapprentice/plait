@@ -1160,7 +1160,7 @@ riskiest view, built quickly on both targets, to find out whether Dioxus
 principles ask for. It is throwaway code that answers questions; what it
 learns decides 3b.
 
-- **Where it lives.** `spikes/gui/`, its own small Cargo workspace outside
+- **Where it lived.** `spikes/gui/` (removed in 3f-3), its own small Cargo workspace outside
   the main one, so its dependencies (the desktop webview stack) don't enter
   the project's lockfile, CI or `cargo vet` until 3b decides what to
   adopt. One crate builds both targets: `--features desktop` (Dioxus
@@ -1183,7 +1183,8 @@ learns decides 3b.
   - A layout that goes from one column in a narrow window to channels,
     notes and editor side by side when wide.
 - **What it tests**, on Windows, macOS and Linux desktops and in Chrome,
-  Firefox and Safari, recorded in `spikes/gui/FINDINGS.md`:
+  Firefox and Safari, recorded in its `FINDINGS.md` (now in `docs/plan.md`,
+  "Text input in the webview"):
   - Spellcheck (underlines and suggestions) in each editor form.
   - Input methods: composing Japanese or Chinese, dead keys and accents,
     emoji pickers, without lost or doubled characters.
@@ -1202,7 +1203,7 @@ Done when: the spike builds and runs on both targets; `FINDINGS.md`
 covers every check above on at least Windows and one browser, with the
 rest marked as still to check; and the roadmap records the decision.
 
-As built (`spikes/gui/FINDINGS.md` has the details):
+As built (`docs/plan.md`, "Text input in the webview", has the details):
 
 - **Dioxus is confirmed** (0.7.10). The spike builds unchanged for
   Windows, macOS, Linux and the browser; the desktop app is 4.9 to 6.6 MB
@@ -1234,8 +1235,9 @@ As built (`spikes/gui/FINDINGS.md` has the details):
   part:** input methods and screen readers (3b onward), macOS, Linux
   desktops, Chrome, Firefox and Safari (3f for the editor; Phase 4 for the
   browsers).
-- `spikes/gui/` stays as a reference until 3f's editor replaces it, then
-  goes; its workflow runs only when it changes.
+- `spikes/gui/` stayed as a reference until 3f's editor replaced it, and
+  was removed in 3f-3 with its workflow; its findings moved into
+  `docs/plan.md`, and the hand checks still to do into #105.
 
 ## Phase 4: Web client
 

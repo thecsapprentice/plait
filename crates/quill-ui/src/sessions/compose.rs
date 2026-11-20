@@ -1,7 +1,7 @@
 //! Writing in a session (3f-2): the editor, sending through the outbox,
 //! drafts kept as you type, and notes waiting to be sent.
 //!
-//! The editor follows the 3a spike (spikes/gui/FINDINGS.md): the text area
+//! The editor follows the 3a findings (docs/plan.md): the text area
 //! is uncontrolled and only replaced by remounting it (findings 1 and 2);
 //! the Live form draws the styled source behind it (finding 3); the preview
 //! and the draft's saving run a few times a second, not per key (finding

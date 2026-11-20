@@ -1,4 +1,5 @@
-//! Text fields that follow the 3a spike's rules (`spikes/gui/FINDINGS.md`):
+//! Text fields that follow the 3a spike's rules (docs/plan.md, "Text input
+//! in the webview"):
 //!
 //! - **Uncontrolled.** The input owns its text while the writer types; the
 //!   app hears it through `oninput` and never writes it back, because a
