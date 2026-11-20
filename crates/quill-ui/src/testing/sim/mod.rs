@@ -997,6 +997,10 @@ impl Backend for Sim {
         now(self.sim_name_channel(id, name, about))
     }
 
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()> {
+        now(self.sim_leave(id))
+    }
+
     fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
         now(self.sim_safety_numbers(id, false))
     }

@@ -107,7 +107,7 @@ async fn a_key_changed_before_comparing_is_checked_first() {
 }
 
 #[tokio::test]
-async fn an_outage_says_so_and_a_left_writer_has_nothing_to_compare() {
+async fn an_outage_says_so_and_an_ended_session_has_nothing_to_compare() {
     let sim = sim();
     let (mut d, id) = reading(&sim).await;
     sim.server(SERVER, |s| s.reachable = false);

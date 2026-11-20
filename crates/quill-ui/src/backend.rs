@@ -773,6 +773,9 @@ pub trait Backend {
     /// Marks the other writer verified on this computer, for their current
     /// identity key, once the words matched.
     fn confirm_verified<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers>;
+    /// Leaves a session, which ends it for both writers. What's written
+    /// stays readable on this computer.
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()>;
     /// Names a new channel, or describes one again, for both writers.
     /// `name` is as `quill_proto::validate::channel` allows.
     fn name_channel<'a>(

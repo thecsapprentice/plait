@@ -64,10 +64,9 @@ pub(super) enum Change<'a> {
 pub(super) struct SimSession {
     pub(super) id: String,
     prompt: Uuid,
-    /// The two writers still in it: login and handle.
+    /// Its two writers, login and handle. As on the server, leaving ends
+    /// the session but keeps both.
     members: Vec<(String, String)>,
-    /// Both writers, even after one leaves: handle, for naming notes.
-    writers: Vec<String>,
     notes: Vec<SimNote>,
     /// Named channels beyond the defaults: name and description.
     channels: Vec<(String, Option<String>)>,
@@ -114,7 +113,6 @@ impl SimServer {
         let mut s = SimSession {
             id: id.clone(),
             prompt,
-            writers: vec![requester.1.clone(), author.1.clone()],
             members: vec![requester.clone(), author],
             notes: Vec::new(),
             channels: Vec::new(),
@@ -281,10 +279,14 @@ impl Sim {
     }
 
     /// `handle` leaves: with two writers, that ends the session for both.
+    /// As on the server, both stay its members, and who left isn't said.
     pub fn leave_as(&self, domain: &str, session: &str, handle: &str) {
         self.server(domain, |s| {
             let session = s.session_mut(session);
-            session.members.retain(|(_, h)| h != handle);
+            assert!(
+                session.members.iter().any(|(_, h)| h == handle),
+                "@{handle} isn't in it"
+            );
             session.ended = true;
         });
         self.live();
@@ -407,16 +409,7 @@ impl Sim {
             .sessions
             .all
             .iter()
-            .filter(|s| {
-                s.mine(&login).is_some()
-                    || s.ended
-                        && s.writers.iter().any(|w| {
-                            server
-                                .personas
-                                .iter()
-                                .any(|(l, p, _)| l == &login && &p.handle == w)
-                        })
-            })
+            .filter(|s| s.mine(&login).is_some())
             .map(|s| self.summary_of(&server, s, &login))
             .collect();
         out.sort_by_key(|s| std::cmp::Reverse(s.latest));
@@ -736,6 +729,21 @@ impl Sim {
             check,
             verified,
         })
+    }
+
+    /// The writer leaves, as `sessions::leave` does: the session ends for
+    /// both, and stays readable. Leaving one already ended is refused.
+    pub(super) fn sim_leave(&self, id: &str) -> Result<(), Problem> {
+        self.writing(|server, login| {
+            let session = server.session_mut(id);
+            if session.mine(login).is_none() {
+                return Err(Problem::Gone);
+            }
+            session.ended = true;
+            Ok(())
+        })?;
+        self.live();
+        Ok(())
     }
 
     /// Names a channel or describes it again, refused as

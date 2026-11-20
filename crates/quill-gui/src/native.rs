@@ -1914,6 +1914,13 @@ impl Backend for NativeBackend {
         })
     }
 
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(
+            move |store, client| async move { sessions::leave(&store, &client, &id).await },
+        )
+    }
+
     fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers> {
         let id = id.to_owned();
         self.call_locked(move |store, client| async move {

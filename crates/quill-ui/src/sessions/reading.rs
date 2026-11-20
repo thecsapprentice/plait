@@ -240,7 +240,8 @@ pub fn SessionPage(id: String) -> Element {
         if let Some((_, t)) = &s.prompt {
             p { class: "lede", "On “{t}”." }
         }
-        if let Some(p) = s.partner.clone() {
+        // Once it ends, the session's keys are gone: nothing to compare.
+        if let Some(p) = s.partner.clone().filter(|_| !s.ended) {
             if v.verification == Verification::KeyChanged {
                 div { class: "notice", role: "alert",
                     p {
