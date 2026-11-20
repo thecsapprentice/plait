@@ -6,7 +6,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -23,7 +23,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -64,7 +64,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -86,7 +86,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 7,
         "channel": "world",
@@ -107,7 +107,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -130,7 +130,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -153,7 +153,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "Story",
@@ -176,7 +176,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 0,
         "channel": "story",
@@ -199,7 +199,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 5,
         "channel": "story",
@@ -222,7 +222,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -638,7 +638,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -753,7 +753,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "channel": "story",
@@ -774,7 +774,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 2,
         "channel": "planning",
@@ -796,7 +796,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 3,
         "channel": "story",
@@ -832,7 +832,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 4,
         "channel": "story",
@@ -853,7 +853,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 5,
         "channel": "story",
@@ -869,7 +869,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 6,
         "channel": "world",
@@ -888,7 +888,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 7,
         "channel": "world",
@@ -908,7 +908,7 @@
       "object": {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
-          "https://quill.example/ns/wr/1.0"
+          "https://plait.example/ns/wr/1.0"
         ],
         "authorSeq": 1,
         "hlc": "1792746000123-0000",
