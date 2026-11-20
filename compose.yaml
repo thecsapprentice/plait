@@ -1,4 +1,4 @@
-# Local development and testing only: a Quill server and its database.
+# Local development and testing only: a Plait server and its database.
 #
 #   docker compose up --build -d                         # start; board at http://localhost:8080/
 #   docker compose exec server plait-server make-admin NAME
@@ -10,19 +10,19 @@
 # only accept for its Secure session cookie on localhost. In production, put
 # it behind HTTPS and set a real database password.
 
-name: quill
+name: plait
 
 services:
   db:
     image: postgres:16-trixie
     environment:
-      POSTGRES_USER: quill
-      POSTGRES_PASSWORD: ${QUILL_DB_PASSWORD:-quill-local-dev}
-      POSTGRES_DB: quill
+      POSTGRES_USER: plait
+      POSTGRES_PASSWORD: ${PLAIT_DB_PASSWORD:-plait-local-dev}
+      POSTGRES_DB: plait
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quill -d quill"]
+      test: ["CMD-SHELL", "pg_isready -U plait -d plait"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -37,19 +37,19 @@ services:
       db:
         condition: service_healthy
     environment:
-      QUILL_DATABASE_URL: postgres://quill:${QUILL_DB_PASSWORD:-quill-local-dev}@db/quill
-      QUILL_DOMAIN: ${QUILL_DOMAIN:-localhost}
-      QUILL_REGISTRATION_OPEN: ${QUILL_REGISTRATION_OPEN:-true}
-      QUILL_TAG_POLICY: ${QUILL_TAG_POLICY:-open}
+      PLAIT_DATABASE_URL: postgres://plait:${PLAIT_DB_PASSWORD:-plait-local-dev}@db/plait
+      PLAIT_DOMAIN: ${PLAIT_DOMAIN:-localhost}
+      PLAIT_REGISTRATION_OPEN: ${PLAIT_REGISTRATION_OPEN:-true}
+      PLAIT_TAG_POLICY: ${PLAIT_TAG_POLICY:-open}
       # A list of reserved persona handles, synced at every start. To use one,
       # uncomment these lines and the volume below, and put the file next to
       # this one as reserved-handles.txt.
-      # QUILL_RESERVED_HANDLES_FILE: /etc/quill/reserved-handles.txt
+      # PLAIT_RESERVED_HANDLES_FILE: /etc/plait/reserved-handles.txt
     # volumes:
-    #   - ./reserved-handles.txt:/etc/quill/reserved-handles.txt:ro
+    #   - ./reserved-handles.txt:/etc/plait/reserved-handles.txt:ro
     ports:
-      # Bound to this machine only; change QUILL_PORT if 8080 is taken.
-      - "127.0.0.1:${QUILL_PORT:-8080}:8080"
+      # Bound to this machine only; change PLAIT_PORT if 8080 is taken.
+      - "127.0.0.1:${PLAIT_PORT:-8080}:8080"
     restart: unless-stopped
 
   # Demo data, only when asked for: `docker compose --profile demo run --build --rm seed`.
@@ -64,8 +64,8 @@ services:
       db:
         condition: service_healthy
     environment:
-      QUILL_DATABASE_URL: postgres://quill:${QUILL_DB_PASSWORD:-quill-local-dev}@db/quill
-      QUILL_TAG_POLICY: ${QUILL_TAG_POLICY:-open}
+      PLAIT_DATABASE_URL: postgres://plait:${PLAIT_DB_PASSWORD:-plait-local-dev}@db/plait
+      PLAIT_TAG_POLICY: ${PLAIT_TAG_POLICY:-open}
 
 volumes:
   db-data:

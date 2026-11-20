@@ -10,7 +10,7 @@
 //! generator makes a new one only when it doesn't.
 //!
 //! To rewrite the files after a deliberate change:
-//! `QUILL_WRITE_VECTORS=1 cargo test -p plait-core vectors`.
+//! `PLAIT_WRITE_VECTORS=1 cargo test -p plait-core vectors`.
 
 // Test code: panicking on failure is intended.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -43,7 +43,7 @@ fn dir() -> std::path::PathBuf {
 }
 
 fn writing() -> bool {
-    std::env::var_os("QUILL_WRITE_VECTORS").is_some()
+    std::env::var_os("PLAIT_WRITE_VECTORS").is_some()
 }
 
 fn committed(name: &str) -> Option<Value> {
@@ -59,7 +59,7 @@ fn check_file(name: &str, value: &Value) -> Value {
         std::fs::write(&path, &text).unwrap();
     }
     let on_disk = std::fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("{} missing; set QUILL_WRITE_VECTORS=1", path.display()));
+        .unwrap_or_else(|_| panic!("{} missing; set PLAIT_WRITE_VECTORS=1", path.display()));
     assert_eq!(on_disk, text, "{name} differs from what the code generates");
     serde_json::from_str(&on_disk).unwrap()
 }
@@ -112,7 +112,7 @@ fn linking() -> Value {
     let mut wrong_words = good.words.clone();
     wrong_words.swap(0, 1);
     json!({
-        "description": "Device linking (protocol draft, section 6). The new device shows quill-link:1:<host>:<linkId>:<fp>, where fp is SHA-256 of the serialized KeyPackage (the MLSMessage bytes posted to /link), base64url without padding. The host may carry a port, so a reader splits the rest from the right. The typed form is the link id and 6 words: the first 66 bits of the SHA-256, 11 bits per word, big-endian, BIP-39 English list; any case and spacing. A device approving the link must refuse a KeyPackage whose fingerprint doesn't match.",
+        "description": "Device linking (protocol draft, section 6). The new device shows plait-link:1:<host>:<linkId>:<fp>, where fp is SHA-256 of the serialized KeyPackage (the MLSMessage bytes posted to /link), base64url without padding. The host may carry a port, so a reader splits the rest from the right. The typed form is the link id and 6 words: the first 66 bits of the SHA-256, 11 bits per word, big-endian, BIP-39 English list; any case and spacing. A device approving the link must refuse a KeyPackage whose fingerprint doesn't match.",
         "valid": valid,
         "typed": [typed, typed_loud],
         "mismatched": {
@@ -125,10 +125,10 @@ fn linking() -> Value {
         "invalid": {
             "wrongWords": format!("{} {}", good.link_id, wrong_words.join(" ")),
             "malformed": [
-                "quill-link:1:writers.example:abc",
-                "quill-link:1:writers.example::".to_owned() + &b64(&Sha256::digest(&pkg)),
-                "quill-link:1:h:id:short",
-                "quill-link:2:writers.example:id:".to_owned() + &b64(&Sha256::digest(&pkg)),
+                "plait-link:1:writers.example:abc",
+                "plait-link:1:writers.example::".to_owned() + &b64(&Sha256::digest(&pkg)),
+                "plait-link:1:h:id:short",
+                "plait-link:2:writers.example:id:".to_owned() + &b64(&Sha256::digest(&pkg)),
                 format!("{} {}", good.link_id, good.words[..5].join(" ")),
                 String::new(),
             ],
@@ -246,7 +246,7 @@ fn backups() -> Value {
         .unwrap_or_else(|| {
             assert!(
                 writing(),
-                "backup.json's sealed file no longer opens; set QUILL_WRITE_VECTORS=1"
+                "backup.json's sealed file no longer opens; set PLAIT_WRITE_VECTORS=1"
             );
             let contents = backup::unpack(&compress(&json, Level::Fastest)).unwrap();
             AgeCrate
@@ -259,7 +259,7 @@ fn backups() -> Value {
     bytes.push(Sha256::digest(code)[0] ^ 0x10);
     let bad_checksum = words::take(&bytes, 12);
     json!({
-        "description": "Backups (protocol draft, section 6, as built in 2j). The recovery code is 128 bits of entropy written as a BIP-39 mnemonic: the entropy and the first 4 bits of its SHA-256, 11 bits per word, big-endian, English list. Reading accepts any case and spacing. The age passphrase is the 12 words, lowercase, joined by single spaces. A backup is an age v1 file with one scrypt recipient (work factor 15; readers allow up to 20) over the plaintext: one zstd frame (RFC 8878) holding UTF-8 JSON {format: \"quill-backup\", version: 2, createdMs, tables}, where tables maps the client store's identities, pins, verified, messages and files tables to lists of [key, value] in base64url (the rows' contents are the client's own). Readers decompress at most 1 GiB. Compressors differ, so any valid frame must be read (uncompressedFrame stores the same JSON without compression). sealed.file is base64url; it is randomized, so a new implementation checks it opens rather than reproducing it. invalidPlaintexts must be refused after the file opens.",
+        "description": "Backups (protocol draft, section 6, as built in 2j). The recovery code is 128 bits of entropy written as a BIP-39 mnemonic: the entropy and the first 4 bits of its SHA-256, 11 bits per word, big-endian, English list. Reading accepts any case and spacing. The age passphrase is the 12 words, lowercase, joined by single spaces. A backup is an age v1 file with one scrypt recipient (work factor 15; readers allow up to 20) over the plaintext: one zstd frame (RFC 8878) holding UTF-8 JSON {format: \"plait-backup\", version: 2, createdMs, tables}, where tables maps the client store's identities, pins, verified, messages and files tables to lists of [key, value] in base64url (the rows' contents are the client's own). Readers decompress at most 1 GiB. Compressors differ, so any valid frame must be read (uncompressedFrame stores the same JSON without compression). sealed.file is base64url; it is randomized, so a new implementation checks it opens rather than reproducing it. invalidPlaintexts must be refused after the file opens.",
         "codes": codes,
         "acceptedSpellings": [
             words::mnemonic(&code).join(" ").to_uppercase(),
@@ -608,7 +608,7 @@ const SCHEMAS: [&str; 4] = [
     "device-payload.json",
     "history-rows.json",
 ];
-const SCHEMA_BASE: &str = "https://quill.example/ns/wr/schemas/1/";
+const SCHEMA_BASE: &str = "https://plait.example/ns/wr/schemas/1/";
 
 fn schema_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas")

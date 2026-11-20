@@ -1,5 +1,5 @@
 //! CLI commands for the server rules: reading and accepting them (anyone),
-//! and writing them (`quill admin rules-set`).
+//! and writing them (`plait admin rules-set`).
 
 use anyhow::{Result, bail};
 use clap::Subcommand;
@@ -11,7 +11,7 @@ use crate::{Ctx, board::BodyArgs};
 pub enum RulesCommand {
     /// Show the server rules, and whether you must accept them.
     Show,
-    /// Accept the server rules, naming the version you read (`quill rules show`).
+    /// Accept the server rules, naming the version you read (`plait rules show`).
     Accept { version: u32 },
 }
 
@@ -22,7 +22,7 @@ fn print_rules(r: &Rules) {
     if r.must_accept {
         println!();
         println!(
-            "These rules changed since you joined. To keep posting, run: quill rules accept {}",
+            "These rules changed since you joined. To keep posting, run: plait rules accept {}",
             r.version
         );
     }
@@ -45,7 +45,7 @@ pub async fn rules(ctx: &Ctx, cmd: RulesCommand) -> Result<()> {
     }
 }
 
-/// `quill admin rules-set`: saves the next version of the rules.
+/// `plait admin rules-set`: saves the next version of the rules.
 pub async fn set(ctx: &Ctx, body: &BodyArgs, minor: bool) -> Result<()> {
     let Some(text) = body.read()? else {
         bail!("give the rules with --body or --body-file");

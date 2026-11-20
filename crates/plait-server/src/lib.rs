@@ -1,4 +1,4 @@
-//! Quill server library: builds the axum application so the binary and the
+//! Plait server library: builds the axum application so the binary and the
 //! end-to-end tests share one code path.
 
 pub mod announcements;

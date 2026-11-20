@@ -63,7 +63,7 @@ impl Browser {
         let res = req.send().await.unwrap();
         if let Some(set) = res.headers().get(header::SET_COOKIE) {
             let set = set.to_str().unwrap();
-            assert!(set.starts_with("__Host-quill_session="));
+            assert!(set.starts_with("__Host-plait_session="));
             for attr in ["Secure", "HttpOnly", "SameSite=Strict", "Path=/"] {
                 assert!(set.contains(attr), "cookie lacks {attr}: {set}");
             }
@@ -187,7 +187,7 @@ async fn public_pages_and_security_headers() {
     assert_eq!(home.headers[header::REFERRER_POLICY], "same-origin");
     assert!(
         home.body
-            .contains("https://github.com/thecsapprentice/quill")
+            .contains("https://github.com/thecsapprentice/plait")
     );
 
     let css = b.get("/static/board.css").await;

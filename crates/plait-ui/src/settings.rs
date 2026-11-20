@@ -298,7 +298,7 @@ fn ServerItem(server: ServerEntry) -> Element {
                 },
                 Mode::Renaming => rsx! {
                     Field {
-                        label: "Name in Quill",
+                        label: "Name in Plait",
                         id: "rename-{id}",
                         kind: Kind::Text,
                         initial: name.peek().clone(),
@@ -314,7 +314,7 @@ fn ServerItem(server: ServerEntry) -> Element {
                 },
                 Mode::Removing => rsx! {
                     div { class: "notice", role: "alert",
-                        "Remove {server.name} from Quill? This deletes this computer's copy: your sign-in, and the keys made here. Your login and personas stay on the server, but keys that are only on this computer are lost."
+                        "Remove {server.name} from Plait? This deletes this computer's copy: your sign-in, and the keys made here. Your login and personas stay on the server, but keys that are only on this computer are lost."
                     }
                     div { class: "actions",
                         button { class: "danger", disabled: busy(), onclick: remove, "Remove {server.name}" }
@@ -370,7 +370,7 @@ fn StoreFieldset() -> Element {
             "Locked with this computer's keychain, so there's nothing to type."
         }
         Some(Protection::Passphrase) => {
-            "Locked with a passphrase you type when Quill opens this server."
+            "Locked with a passphrase you type when Plait opens this server."
         }
         None => "Locked. Unlock it to change how.",
     };
@@ -378,7 +378,7 @@ fn StoreFieldset() -> Element {
         fieldset {
             legend { "This computer's copy" }
             p { class: "hint",
-                "Quill keeps your sign-in and your keys for this server in an encrypted file on this computer. {said}"
+                "Plait keeps your sign-in and your keys for this server in an encrypted file on this computer. {said}"
             }
             if changing() {
                 Field {
@@ -413,7 +413,7 @@ fn StoreFieldset() -> Element {
                 }
             }
             if !keychain {
-                p { class: "hint", "This computer has no keychain Quill can use, so a passphrase is the only choice." }
+                p { class: "hint", "This computer has no keychain Plait can use, so a passphrase is the only choice." }
             }
             if let Some(p) = problem() {
                 ProblemLine { problem: p }
@@ -503,7 +503,7 @@ fn AdvancedFieldset() -> Element {
                     checked: settings.advanced,
                     onchange: toggle,
                 }
-                label { r#for: "advanced", "Advanced mode: show ids, keys and what Quill does in the background" }
+                label { r#for: "advanced", "Advanced mode: show ids, keys and what Plait does in the background" }
             }
             if settings.advanced {
                 Field {

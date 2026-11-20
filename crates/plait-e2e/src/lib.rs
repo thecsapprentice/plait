@@ -1,8 +1,8 @@
 //! Test harness: starts a real `plait-server` on a random port, backed by a
 //! fresh Postgres database that is dropped afterwards.
 //!
-//! Set `QUILL_TEST_DATABASE_URL` to a Postgres URL whose role may create
-//! databases, e.g. `postgres://quill:quill@localhost/postgres`. If it is
+//! Set `PLAIT_TEST_DATABASE_URL` to a Postgres URL whose role may create
+//! databases, e.g. `postgres://plait:plait@localhost/postgres`. If it is
 //! unset, tests are skipped locally but fail in CI (`CI` is set).
 
 use std::net::SocketAddr;
@@ -14,7 +14,7 @@ use plait_server::{AppState, Config, connect_and_migrate, router};
 use sqlx::{AssertSqlSafe, Connection, PgConnection};
 use tokio::task::JoinHandle;
 
-pub const DATABASE_ENV: &str = "QUILL_TEST_DATABASE_URL";
+pub const DATABASE_ENV: &str = "PLAIT_TEST_DATABASE_URL";
 
 /// One request and its response, as the server answered it.
 #[derive(Debug, Clone)]
@@ -113,7 +113,7 @@ impl TestServer {
             return Ok(None);
         };
 
-        let db_name = format!("quill_test_{}", uuid::Uuid::now_v7().simple());
+        let db_name = format!("plait_test_{}", uuid::Uuid::now_v7().simple());
         let mut admin = PgConnection::connect(&admin_url)
             .await
             .context("connecting to test Postgres")?;

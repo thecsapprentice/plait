@@ -70,7 +70,7 @@ pub fn SafetyPanel(
         Some(Err(p)) => rsx! { ProblemLine { problem: p } },
         Some(Ok(n)) => rsx! {
             p {
-                "Compare these with @{handle} some other way than Quill, like a call. "
+                "Compare these with @{handle} some other way than Plait, like a call. "
                 "If they match, no one is passing as either of you, and no one is reading between you."
             }
             p { class: "hint", "Your 12 words with @{handle}" }

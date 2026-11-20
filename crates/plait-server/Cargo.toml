@@ -1,6 +1,6 @@
 [package]
 name = "plait-server"
-description = "Quill server: prompt board, MLS delivery service and ActivityPub federation. Never holds session keys."
+description = "Plait server: prompt board, MLS delivery service and ActivityPub federation. Never holds session keys."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

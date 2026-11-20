@@ -130,7 +130,7 @@ pub(crate) fn footer(chrome: &Chrome) -> Element {
                     p { a { href: crate::RULES_PATH, "Server rules" } }
                 }
                 p {
-                    "Quill {chrome.version}, free software under the GNU AGPL. "
+                    "Plait {chrome.version}, free software under the GNU AGPL. "
                     a { href: "{chrome.source_url}", "Source code" }
                 }
                 p { "This board works without JavaScript and loads nothing from other sites." }

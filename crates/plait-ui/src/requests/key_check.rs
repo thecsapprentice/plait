@@ -83,13 +83,13 @@ pub fn KeyCheck(handle: String, as_persona: Uuid, on_done: EventHandler<bool>) -
             },
             h3 { id: "key-check-{c.handle}", "@{c.handle}'s identity key changed" }
             p {
-                "Quill keeps the identity key it first saw for each writer. @{c.handle}'s is different now. "
+                "Plait keeps the identity key it first saw for each writer. @{c.handle}'s is different now. "
                 "Usually that's because they started over on a new computer without their old keys. "
                 "It could also mean someone is using the server to pass as them."
             }
             p {
-                "Ask @{c.handle} to read you their 12 words for the two of you, some other way than Quill. "
-                "In Quill they're under “Compare words with @{me}” on your prompt or request, or on their Personas page. "
+                "Ask @{c.handle} to read you their 12 words for the two of you, some other way than Plait. "
+                "In Plait they're under “Compare words with @{me}” on your prompt or request, or on their Personas page. "
                 "Carry on only if they match these:"
             }
             ol { class: "words", aria_label: "The words to compare",

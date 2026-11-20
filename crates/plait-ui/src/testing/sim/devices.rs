@@ -345,7 +345,7 @@ impl Sim {
             });
             store.here.link = Some(id);
             Ok(LinkStart {
-                code: format!("quill-link:1:{domain}:{id}:c2ltdWxhdGVk"),
+                code: format!("plait-link:1:{domain}:{id}:c2ltdWxhdGVk"),
                 words,
                 expires_in_secs: 600,
             })
@@ -399,7 +399,7 @@ impl Sim {
     pub(super) fn sim_approve_link(&self, typed: &str) -> Result<Approval, Problem> {
         let (login, _) = self.signed_in()?;
         let typed = typed.trim().to_lowercase();
-        let by_code = typed.starts_with("quill-link:");
+        let by_code = typed.starts_with("plait-link:");
         let words: Vec<String> = typed.split_whitespace().map(str::to_owned).collect();
         if !by_code && words.len() != 6 {
             return Err(refused(

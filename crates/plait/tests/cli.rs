@@ -9,13 +9,13 @@ use plait_e2e::TestServer;
 
 const PASSPHRASE: &str = "a long enough passphrase";
 
-/// Runs `quill` with a store in `dir`; returns (success, stdout, stderr).
+/// Runs `plait` with a store in `dir`; returns (success, stdout, stderr).
 /// Blocks its thread, so the test runtime needs another for the server.
-fn quill(dir: &Path, passphrase: &str, args: &[&str]) -> (bool, String, String) {
-    quill_with(dir, passphrase, &[], args)
+fn plait(dir: &Path, passphrase: &str, args: &[&str]) -> (bool, String, String) {
+    plait_with(dir, passphrase, &[], args)
 }
 
-fn quill_with(
+fn plait_with(
     dir: &Path,
     passphrase: &str,
     env: &[(&str, &str)],
@@ -24,10 +24,10 @@ fn quill_with(
     let out = Command::new(env!("CARGO_BIN_EXE_plait"))
         .args(args)
         .envs(env.iter().copied())
-        .env("QUILL_STORE", dir.join("store.quill"))
-        .env("QUILL_PROFILE", dir.join("profile.json"))
-        .env("QUILL_STORE_PASSPHRASE", passphrase)
-        .env("QUILL_PASSWORD", "a writer's password")
+        .env("PLAIT_STORE", dir.join("store.plait"))
+        .env("PLAIT_PROFILE", dir.join("profile.json"))
+        .env("PLAIT_STORE_PASSPHRASE", passphrase)
+        .env("PLAIT_PASSWORD", "a writer's password")
         .output()
         .unwrap();
     (
@@ -47,9 +47,9 @@ fn link(existing: &Path, new: &Path) -> String {
     // The new device waits for approval, showing its code.
     let mut link = std::process::Command::new(env!("CARGO_BIN_EXE_plait"))
         .args(["device", "link"])
-        .env("QUILL_STORE", new.join("store.quill"))
-        .env("QUILL_PROFILE", new.join("profile.json"))
-        .env("QUILL_STORE_PASSPHRASE", PASSPHRASE)
+        .env("PLAIT_STORE", new.join("store.plait"))
+        .env("PLAIT_PROFILE", new.join("profile.json"))
+        .env("PLAIT_STORE_PASSPHRASE", PASSPHRASE)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -59,13 +59,13 @@ fn link(existing: &Path, new: &Path) -> String {
     let code = loop {
         let mut line = String::new();
         assert!(out.read_line(&mut line).unwrap() > 0, "link exited early");
-        if let Some(code) = line.trim().strip_prefix("quill device approve ") {
+        if let Some(code) = line.trim().strip_prefix("plait device approve ") {
             break code.to_owned();
         }
     };
 
     // The existing device approves and shows the words.
-    let (ok, shown, err) = quill(existing, PASSPHRASE, &["device", "approve", &code]);
+    let (ok, shown, err) = plait(existing, PASSPHRASE, &["device", "approve", &code]);
     assert!(ok, "{err}");
     let existing_words = shown
         .lines()
@@ -96,7 +96,7 @@ async fn the_cli_keeps_its_login_in_the_encrypted_store() {
     };
     let dir = tempfile::tempdir().unwrap();
     let url = server.url();
-    let run = |args: &[&str]| quill(dir.path(), PASSPHRASE, args);
+    let run = |args: &[&str]| plait(dir.path(), PASSPHRASE, args);
 
     // An old plain profile is taken over by the new store, then deleted.
     std::fs::write(
@@ -122,7 +122,7 @@ async fn the_cli_keeps_its_login_in_the_encrypted_store() {
     // Nothing readable on disk: not the server, the login or the token.
     // (The token itself, not its three-byte prefix, which random ciphertext
     // matches now and then.)
-    let path = dir.path().join("store.quill");
+    let path = dir.path().join("store.plait");
     let token = {
         let store =
             plait_core::Store::open(&path, plait_core::store::Unlock::Passphrase(PASSPHRASE))
@@ -144,16 +144,16 @@ async fn the_cli_keeps_its_login_in_the_encrypted_store() {
     assert_eq!(status["protectedBy"], "passphrase");
 
     // A wrong passphrase gets nothing; changing it locks out the old one.
-    let (ok, _, err) = quill(dir.path(), "not the passphrase", &["persona", "list"]);
+    let (ok, _, err) = plait(dir.path(), "not the passphrase", &["persona", "list"]);
     assert!(!ok && err.contains("wrong passphrase"), "{err}");
     // The new passphrase comes from its own variable when not typed.
     let new = "an entirely different passphrase";
     let out = Command::new(env!("CARGO_BIN_EXE_plait"))
         .args(["store", "passphrase"])
-        .env("QUILL_STORE", dir.path().join("store.quill"))
-        .env("QUILL_PROFILE", dir.path().join("profile.json"))
-        .env("QUILL_STORE_PASSPHRASE", PASSPHRASE)
-        .env("QUILL_STORE_NEW_PASSPHRASE", new)
+        .env("PLAIT_STORE", dir.path().join("store.plait"))
+        .env("PLAIT_PROFILE", dir.path().join("profile.json"))
+        .env("PLAIT_STORE_PASSPHRASE", PASSPHRASE)
+        .env("PLAIT_STORE_NEW_PASSPHRASE", new)
         .output()
         .unwrap();
     assert!(
@@ -163,12 +163,12 @@ async fn the_cli_keeps_its_login_in_the_encrypted_store() {
     );
     let (ok, _, _) = run(&["persona", "list"]);
     assert!(!ok);
-    let (ok, _, err) = quill(dir.path(), new, &["persona", "list"]);
+    let (ok, _, err) = plait(dir.path(), new, &["persona", "list"]);
     assert!(ok, "{err}");
 
     // Short passphrases are refused for new stores.
     let other = tempfile::tempdir().unwrap();
-    let (ok, _, err) = quill(other.path(), "short", &["server"]);
+    let (ok, _, err) = plait(other.path(), "short", &["server"]);
     assert!(!ok && err.contains("at least 12"), "{err}");
     server.stop().await.unwrap();
 }
@@ -181,8 +181,8 @@ async fn the_cli_publishes_and_checks_persona_keys() {
     let alice = tempfile::tempdir().unwrap();
     let bob = tempfile::tempdir().unwrap();
     let url = server.url();
-    let as_alice = |args: &[&str]| quill(alice.path(), PASSPHRASE, args);
-    let as_bob = |args: &[&str]| quill(bob.path(), PASSPHRASE, args);
+    let as_alice = |args: &[&str]| plait(alice.path(), PASSPHRASE, args);
+    let as_bob = |args: &[&str]| plait(bob.path(), PASSPHRASE, args);
     assert!(as_alice(&["server", &url]).0);
     assert!(as_bob(&["server", &url]).0);
     assert!(as_alice(&["register", "cli_alice"]).0);
@@ -227,7 +227,7 @@ async fn the_cli_publishes_and_checks_persona_keys() {
     // Replacing the key from a new store: refused unless asked for, and
     // then Bob is warned until he accepts the change.
     let other = tempfile::tempdir().unwrap();
-    let as_other = |args: &[&str]| quill(other.path(), PASSPHRASE, args);
+    let as_other = |args: &[&str]| plait(other.path(), PASSPHRASE, args);
     assert!(as_other(&["server", &url]).0);
     assert!(as_other(&["login", "cli_alice"]).0);
     let (ok, _, err) = as_other(&["keys", "init", "--as", "ink_fox"]);
@@ -260,8 +260,8 @@ async fn the_cli_links_a_second_computer() {
     let laptop = tempfile::tempdir().unwrap();
     let desktop = tempfile::tempdir().unwrap();
     let url = server.url();
-    let on_laptop = |args: &[&str]| quill(laptop.path(), PASSPHRASE, args);
-    let on_desktop = |args: &[&str]| quill(desktop.path(), PASSPHRASE, args);
+    let on_laptop = |args: &[&str]| plait(laptop.path(), PASSPHRASE, args);
+    let on_desktop = |args: &[&str]| plait(desktop.path(), PASSPHRASE, args);
     assert!(on_laptop(&["server", &url]).0);
     assert!(on_laptop(&["register", "cli_alice"]).0);
     assert!(on_laptop(&["persona", "new", "ink_fox"]).0);
@@ -300,8 +300,8 @@ async fn the_cli_sends_reads_and_accepts_a_request() {
     let alice = tempfile::tempdir().unwrap();
     let bob = tempfile::tempdir().unwrap();
     let url = server.url();
-    let as_alice = |args: &[&str]| quill(alice.path(), PASSPHRASE, args);
-    let as_bob = |args: &[&str]| quill(bob.path(), PASSPHRASE, args);
+    let as_alice = |args: &[&str]| plait(alice.path(), PASSPHRASE, args);
+    let as_bob = |args: &[&str]| plait(bob.path(), PASSPHRASE, args);
     for (who, name, handle) in [
         (&as_alice as &dyn Fn(&[&str]) -> _, "cli_alice", "ink_fox"),
         (&as_bob, "cli_bob", "quiet_wren"),
@@ -504,7 +504,7 @@ async fn the_cli_sends_reads_and_accepts_a_request() {
     // Bob links a second computer: his laptop adds it to the session, and
     // sends it what came before (2k).
     let desktop = tempfile::tempdir().unwrap();
-    let on_desktop = |args: &[&str]| quill(desktop.path(), PASSPHRASE, args);
+    let on_desktop = |args: &[&str]| plait(desktop.path(), PASSPHRASE, args);
     assert!(on_desktop(&["server", &url]).0);
     assert!(on_desktop(&["login", "cli_bob"]).0);
     let rest = link(bob.path(), desktop.path());
@@ -538,10 +538,10 @@ async fn the_cli_sends_reads_and_accepts_a_request() {
         .to_owned();
     let restored = tempfile::tempdir().unwrap();
     let as_new = |args: &[&str]| {
-        quill_with(
+        plait_with(
             restored.path(),
             PASSPHRASE,
-            &[("QUILL_RECOVERY_CODE", &code)],
+            &[("PLAIT_RECOVERY_CODE", &code)],
             args,
         )
     };
@@ -568,7 +568,7 @@ async fn the_cli_sets_up_automated_moderation() {
         return;
     };
     let dir = tempfile::tempdir().unwrap();
-    let run = |args: &[&str]| quill(dir.path(), PASSPHRASE, args);
+    let run = |args: &[&str]| plait(dir.path(), PASSPHRASE, args);
     let (ok, _, err) = run(&["server", &server.url()]);
     assert!(ok, "{err}");
     let (ok, _, err) = run(&["register", "cli_admin"]);
@@ -649,16 +649,16 @@ async fn the_cli_sets_up_automated_moderation() {
 #[test]
 fn errors_print_their_codes() {
     let dir = tempfile::tempdir().unwrap();
-    let (ok, _, err) = quill(dir.path(), PASSPHRASE, &["server", "http://localhost:9"]);
+    let (ok, _, err) = plait(dir.path(), PASSPHRASE, &["server", "http://localhost:9"]);
     assert!(ok, "{err}");
     // Wrong passphrase: the store's code.
-    let (ok, _, err) = quill(dir.path(), "not the passphrase at all", &["server"]);
+    let (ok, _, err) = plait(dir.path(), "not the passphrase at all", &["server"]);
     assert!(!ok && err.starts_with("error Q-1356: "), "{err}");
     // Not signed in: core's code.
-    let (ok, _, err) = quill(dir.path(), PASSPHRASE, &["persona", "list"]);
+    let (ok, _, err) = plait(dir.path(), PASSPHRASE, &["persona", "list"]);
     assert!(!ok && err.starts_with("error Q-1150: "), "{err}");
     // Something the CLI can't use: its own code.
-    let (ok, _, err) = quill(
+    let (ok, _, err) = plait(
         dir.path(),
         PASSPHRASE,
         &[

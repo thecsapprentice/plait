@@ -17,7 +17,7 @@ use zeroize::Zeroizing;
 use crate::CoreError;
 
 /// Environment variable that overrides the profile file location.
-pub const PROFILE_ENV: &str = "QUILL_PROFILE";
+pub const PROFILE_ENV: &str = "PLAIT_PROFILE";
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,16 +40,16 @@ impl std::fmt::Debug for Profile {
 }
 
 impl Profile {
-    /// Default profile path: `$QUILL_PROFILE`, else the platform config
-    /// directory (e.g. `~/.config/quill/profile.json` on Linux).
+    /// Default profile path: `$PLAIT_PROFILE`, else the platform config
+    /// directory (e.g. `~/.config/plait/profile.json` on Linux).
     pub fn default_path() -> Result<PathBuf, CoreError> {
         if let Some(p) = std::env::var_os(PROFILE_ENV) {
             return Ok(PathBuf::from(p));
         }
-        let dirs = directories::ProjectDirs::from("", "", "quill").ok_or_else(|| {
+        let dirs = directories::ProjectDirs::from("", "", "plait").ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "no home directory; set QUILL_PROFILE",
+                "no home directory; set PLAIT_PROFILE",
             )
         })?;
         Ok(dirs.config_dir().join("profile.json"))

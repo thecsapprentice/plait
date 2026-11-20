@@ -15,7 +15,7 @@ use crate::{AppState, auth::token_hash, error::ApiError};
 /// `__Host-` cookies must be Secure, host-only and path `/`, so no subdomain
 /// or other path can set or read them. Browsers treat `localhost` as secure,
 /// so this also works in development.
-pub const COOKIE: &str = "__Host-quill_session";
+pub const COOKIE: &str = "__Host-plait_session";
 
 /// A signed-in browser visitor.
 #[derive(Debug, Clone)]
@@ -93,7 +93,7 @@ pub async fn end(state: &AppState, session: &Session) -> Result<HeaderValue, Api
         .execute(&state.pool)
         .await?;
     Ok(HeaderValue::from_static(
-        "__Host-quill_session=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0",
+        "__Host-plait_session=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0",
     ))
 }
 
@@ -151,13 +151,13 @@ mod tests {
         let mut h = HeaderMap::new();
         h.append(
             header::COOKIE,
-            HeaderValue::from_static("a=1; __Host-quill_session=tok; b=2"),
+            HeaderValue::from_static("a=1; __Host-plait_session=tok; b=2"),
         );
         assert_eq!(cookie_token(&h).as_deref(), Some("tok"));
         let mut other = HeaderMap::new();
         other.append(
             header::COOKIE,
-            HeaderValue::from_static("quill_session=tok"),
+            HeaderValue::from_static("plait_session=tok"),
         );
         assert_eq!(cookie_token(&other), None);
     }

@@ -48,7 +48,7 @@ async fn reserved_handles_are_refused_to_writers() {
         "ad_min",
         "adm1n",
         "M0derator",
-        "quill",
+        "plait",
         "everyone",
         "localhost",
         "localhost_news",
@@ -242,7 +242,7 @@ async fn a_reserved_handles_file_is_synced_at_startup() {
     let server = server!();
     let alice = server.account("alice").await.unwrap();
     let admin = server.admin_account("boss").await.unwrap();
-    let dir = std::env::temp_dir().join(format!("quill-reserved-{}", uuid::Uuid::now_v7()));
+    let dir = std::env::temp_dir().join(format!("plait-reserved-{}", uuid::Uuid::now_v7()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("reserved.txt");
 

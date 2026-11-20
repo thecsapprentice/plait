@@ -88,7 +88,7 @@ impl Backend for Fake {
             registration_open: true,
             has_rules: true,
             rules_to_accept: true,
-            software: "quill".into(),
+            software: "plait".into(),
             version: "0.0.0".into(),
         }))
     }
@@ -405,7 +405,7 @@ impl Backend for Fake {
     }
     fn details(&self) -> Call<'_, Details> {
         ready(Ok(Details {
-            rows: vec![("Store".into(), "/tmp/store.quill".into())],
+            rows: vec![("Store".into(), "/tmp/store.plait".into())],
         }))
     }
     fn sleep(&self, _: u64) -> Pin<Box<dyn Future<Output = ()> + '_>> {

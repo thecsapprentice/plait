@@ -248,7 +248,7 @@ mod tests {
     fn instance_info_uses_camel_case() {
         let info = InstanceInfo {
             domain: "alpha.test".into(),
-            software: "quill".into(),
+            software: "plait".into(),
             software_version: "0.1.0".into(),
             protocol_versions: vec!["0.1".into()],
             registration_open: true,

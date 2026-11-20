@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Builds the Quill server (target `server`, the default) and the demo-data
+# Builds the Plait server (target `server`, the default) and the demo-data
 # seeder (target `seed`, development only). Use with compose.yaml:
 #   docker compose up --build
 
@@ -19,8 +19,8 @@ FROM debian:trixie-slim AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --uid 10001 --no-create-home quill
-USER quill
+    && useradd --system --uid 10001 --no-create-home plait
+USER plait
 
 # Demo-data seeder. Kept out of the server image so it can't be run against
 # a production database by accident.
@@ -31,7 +31,7 @@ ENTRYPOINT ["plait-seed"]
 # The server. Last, so it is the default target.
 FROM runtime AS server
 COPY --from=build /usr/local/bin/plait-server /usr/local/bin/plait-server
-ENV QUILL_BIND=0.0.0.0:8080
+ENV PLAIT_BIND=0.0.0.0:8080
 EXPOSE 8080
 # The server shuts down gracefully on SIGINT.
 STOPSIGNAL SIGINT

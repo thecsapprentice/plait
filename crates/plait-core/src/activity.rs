@@ -1,5 +1,5 @@
 //! What travels inside session messages (protocol draft, section 5): one
-//! AS2 activity in UTF-8 JSON per MLS application message, with Quill's
+//! AS2 activity in UTF-8 JSON per MLS application message, with Plait's
 //! fields for the clock (`hlc`), the sending device's counter
 //! (`authorSeq`) and the channel.
 
@@ -10,7 +10,7 @@ use crate::hlc::Hlc;
 
 const CONTEXT: [&str; 2] = [
     "https://www.w3.org/ns/activitystreams",
-    "https://quill.example/ns/wr/1.0",
+    "https://plait.example/ns/wr/1.0",
 ];
 
 /// One activity.

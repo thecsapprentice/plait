@@ -104,8 +104,8 @@ pub fn document() -> String {
     let mut out = String::from(
         "# Error codes\n\n\
          Generated from `plait_proto::codes`; don't edit by hand \
-         (`QUILL_WRITE_CODES=1 cargo test -p plait-proto codes`).\n\n\
-         Every problem Quill can show has a code, `Q-AACC`: `AA` is the area and \
+         (`PLAIT_WRITE_CODES=1 cargo test -p plait-proto codes`).\n\n\
+         Every problem Plait can show has a code, `Q-AACC`: `AA` is the area and \
          `CC` the case. In each area, 01–49 are refusals by the server and \
          50–99 are decided by the client. The desktop app shows codes in \
          advanced mode; the CLI always prints them. A code never changes \
@@ -193,14 +193,14 @@ mod tests {
         let path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/error-codes.md");
         let text = document();
-        if std::env::var_os("QUILL_WRITE_CODES").is_some() {
+        if std::env::var_os("PLAIT_WRITE_CODES").is_some() {
             std::fs::write(&path, &text).unwrap();
         }
         let committed = std::fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("{} missing; set QUILL_WRITE_CODES=1", path.display()));
+            .unwrap_or_else(|_| panic!("{} missing; set PLAIT_WRITE_CODES=1", path.display()));
         assert!(
             committed == text,
-            "docs/error-codes.md is stale: QUILL_WRITE_CODES=1 cargo test -p plait-proto codes"
+            "docs/error-codes.md is stale: PLAIT_WRITE_CODES=1 cargo test -p plait-proto codes"
         );
     }
 }

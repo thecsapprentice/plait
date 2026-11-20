@@ -96,7 +96,7 @@ async fn old_messages_go_and_readers_from_before_them_get_gone() {
     );
 
     age(&db, &gid, &[1, 2], 31).await;
-    // With deleting by age turned off (QUILL_RETENTION_DAYS=-1), everything
+    // With deleting by age turned off (PLAIT_RETENTION_DAYS=-1), everything
     // stays however old.
     assert_eq!(retention::sweep(&db, None).await.unwrap().aged, 0);
     assert_eq!(

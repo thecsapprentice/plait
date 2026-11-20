@@ -9,7 +9,7 @@
   formats, client API outline, prompt reports and conformance artifacts.
 - [**Roadmap**](roadmap.md): every phase split into sub-phases, one pull
   request each, with status and "done when" checks.
-- [**Rebranding Quill as Plait**](rebrand-plait.md): why the project is
+- [**Rebranding Plait as Plait**](rebrand-plait.md): why the project is
   being renamed, which words change where (the interface keeps writing
   words; weaving stays in the art and docs), the keep list, and the steps.
   The brand assets are in [`assets/brand/`](../assets/brand/README.md).

@@ -83,17 +83,17 @@ fn check(theme: &str, c: &HashMap<String, String>) {
 #[test]
 fn colours_meet_wcag_aa_in_both_themes() {
     check("light", &colours(":root"));
-    check("dark", &colours(".quill[data-theme=\"dark\"]"));
+    check("dark", &colours(".plait[data-theme=\"dark\"]"));
 }
 
 #[test]
 fn each_theme_says_the_same_wherever_it_is_written() {
     // Light is on :root and again for the light setting; dark is under the
     // system's dark setting and again for the dark setting.
-    assert_eq!(colours(":root"), colours(".quill[data-theme=\"light\"]"));
+    assert_eq!(colours(":root"), colours(".plait[data-theme=\"light\"]"));
     assert_eq!(
-        colours("  :root, .quill:not([data-theme=\"light\"])"),
-        colours(".quill[data-theme=\"dark\"]")
+        colours("  :root, .plait:not([data-theme=\"light\"])"),
+        colours(".plait[data-theme=\"dark\"]")
     );
 }
 

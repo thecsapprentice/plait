@@ -1,6 +1,6 @@
 //! CLI commands for announcements: reading and commenting on them (anyone),
 //! and posting, editing, deleting and moderating them (administrators,
-//! under `quill admin announce`).
+//! under `plait admin announce`).
 
 use anyhow::{Result, bail};
 use clap::Subcommand;
@@ -52,7 +52,7 @@ pub enum AnnouncementsCommand {
         #[arg(long)]
         administrators: bool,
         /// Administrators only: comment under your staff name (set it with
-        /// `quill account set --staff-name`).
+        /// `plait account set --staff-name`).
         #[arg(long)]
         staff: bool,
         #[command(flatten)]

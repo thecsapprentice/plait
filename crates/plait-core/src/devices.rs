@@ -45,9 +45,9 @@ use crate::{
     words,
 };
 
-/// The personal group's credentials: `quill-device:{account device id}`.
-const CREDENTIAL_PREFIX: &str = "quill-device:";
-const LINK_PREFIX: &str = "quill-link:1:";
+/// The personal group's credentials: `plait-device:{account device id}`.
+const CREDENTIAL_PREFIX: &str = "plait-device:";
+const LINK_PREFIX: &str = "plait-link:1:";
 /// Commits and messages are retried this often after losing an epoch race.
 const RETRIES: usize = 5;
 
@@ -88,7 +88,7 @@ fn err(msg: impl Into<String>) -> CoreError {
 /// The error for a device that fell behind the device group.
 fn fell_behind() -> CoreError {
     err(
-        "this device was away longer than the server keeps your devices' messages: link it again with `quill device link` (its keys and sessions stay)",
+        "this device was away longer than the server keeps your devices' messages: link it again with `plait device link` (its keys and sessions stay)",
     )
 }
 
@@ -670,7 +670,7 @@ fn apply(p: &Provider<'_>, gid: &[u8], bytes: &[u8]) -> Result<Applied, CoreErro
                 }
             }
         }
-        // Quill sends no standalone proposals.
+        // Plait sends no standalone proposals.
         _ => {}
     }
     Ok(out)
@@ -849,7 +849,7 @@ async fn ensure_group(store: &Store, client: &Client) -> Result<Vec<u8>, CoreErr
     }
     if client.device_group().await?.is_some() {
         return Err(err(
-            "this login's devices already have a group this device isn't in; link this device with `quill device link`",
+            "this login's devices already have a group this device isn't in; link this device with `plait device link`",
         ));
     }
     let me = account_device(store)?;
@@ -923,7 +923,7 @@ pub async fn announce(store: &Store, client: &Client) -> Result<(), CoreError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingLink {
     pub link_id: String,
-    /// `quill-link:1:HOST:LINK_ID:FINGERPRINT`
+    /// `plait-link:1:HOST:LINK_ID:FINGERPRINT`
     pub code: String,
     /// The fingerprint's 6 words, for typing the code instead.
     pub words: Vec<&'static str>,
@@ -1159,7 +1159,7 @@ impl std::str::FromStr for LinkCode {
             7 => (parts[0], &parts[1..]),
             _ => {
                 return Err(err(
-                    "give the 6 words the new device shows, or its whole quill-link: code",
+                    "give the 6 words the new device shows, or its whole plait-link: code",
                 ));
             }
         };
@@ -1259,7 +1259,7 @@ pub async fn approve(
         _ => return Err(err("the link holds no KeyPackage")),
     };
     let device = device_of(package.leaf_node().credential())
-        .ok_or_else(|| err("the new device's credential isn't a Quill device"))?;
+        .ok_or_else(|| err("the new device's credential isn't a Plait device"))?;
 
     let (posted, welcome, group) = commit(store, client, &gid, |p, group, me| {
         let (commit, welcome, _) = group
@@ -1589,7 +1589,7 @@ mod tests {
     #[test]
     fn link_codes_parse_both_ways() {
         let fp = b64(&[7u8; 32]);
-        let code: LinkCode = format!("quill-link:1:writers.example:8090:abc123:{fp}")
+        let code: LinkCode = format!("plait-link:1:writers.example:8090:abc123:{fp}")
             .parse()
             .unwrap();
         assert_eq!(code.link_id, "abc123");
@@ -1604,10 +1604,10 @@ mod tests {
         assert!(alone.needs_lookup());
         assert!(!typed.needs_lookup());
         for bad in [
-            "quill-link:1:host:abc",
+            "plait-link:1:host:abc",
             "abc123 one two",
             "",
-            "quill-link:1:h:id:short",
+            "plait-link:1:h:id:short",
         ] {
             assert!(bad.parse::<LinkCode>().is_err(), "{bad}");
         }

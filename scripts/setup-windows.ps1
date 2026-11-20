@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs the tools to build and test Quill on Windows, using Chocolatey.
+    Installs the tools to build and test Plait on Windows, using Chocolatey.
 
 .DESCRIPTION
     Installs, if missing:
@@ -21,7 +21,7 @@
     The Build Tools download is a few GB and takes a while.
 
 .PARAMETER Build
-    After installing, build the `quill` CLI in release mode and print where
+    After installing, build the `plait` CLI in release mode and print where
     it is. Run from the repository's root folder.
 
 .EXAMPLE
@@ -192,13 +192,13 @@ if (-not $ok) {
 }
 
 if ($Build) {
-    Write-Step 'Building the quill CLI (release)'
+    Write-Step 'Building the plait CLI (release)'
     if (-not (Test-Path 'Cargo.toml') -or -not (Test-Path 'rust-toolchain.toml')) {
-        throw 'Run this from the root of the quill repository to build.'
+        throw 'Run this from the root of the plait repository to build.'
     }
     cargo build --release --locked -p plait
     if ($LASTEXITCODE -ne 0) { throw 'The build failed; see the errors above.' }
-    $exe = Resolve-Path 'target\release\quill.exe'
+    $exe = Resolve-Path 'target\release\plait.exe'
     Write-Host ''
     Write-Host "Built: $exe" -ForegroundColor Green
 }

@@ -22,7 +22,7 @@ or server runs. Each file's `description` states the rule it pins.
 | [`limits.json`](limits.json) | Default limits, text limits at and past their edge, blob buckets | `plait-proto` |
 
 To rewrite them after a deliberate change, run the crate's tests with
-`QUILL_WRITE_VECTORS=1`, and review the diff. The sealed backup is
+`PLAIT_WRITE_VECTORS=1`, and review the diff. The sealed backup is
 randomized, so its generator keeps the committed one while it still opens.
 
 Not covered here: the leaf extension (a fixed KeyPackage would expire; the

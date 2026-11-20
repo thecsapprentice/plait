@@ -271,7 +271,7 @@ fn Incoming(
                     ProblemLine {
                         problem: Problem::refused(
                             codes::REQUEST_REFUSED,
-                            "It failed Quill's checks, so it isn't shown: it may have been changed on the way. Decline it, or let it lapse.",
+                            "It failed Plait's checks, so it isn't shown: it may have been changed on the way. Decline it, or let it lapse.",
                         ),
                     }
                     if model.read().settings.advanced {

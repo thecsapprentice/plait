@@ -22,7 +22,7 @@ fn chrome(signed_in: bool, admin: bool) -> Chrome {
             unread_notices: 2,
             must_accept_rules: false,
         }),
-        source_url: "https://github.com/thecsapprentice/quill".into(),
+        source_url: "https://github.com/thecsapprentice/plait".into(),
         version: "0.1.0".into(),
         notice: None,
         current: Nav::Board,
@@ -96,7 +96,7 @@ fn board_escapes_text_and_keeps_sanitized_html() {
     assert!(html.contains(r#"href="/?include=genre%3Ahorror""#));
     assert!(html.contains("cursor=abc%2B%2F%3D"));
     assert!(html.contains("Busy"));
-    assert!(html.contains(r#"href="https://github.com/thecsapprentice/quill""#));
+    assert!(html.contains(r#"href="https://github.com/thecsapprentice/plait""#));
     // Anonymous visitors get no forms that need a session.
     assert!(!html.contains("csrf-token-123"));
     assert!(html.contains(r#"href="/login""#));
@@ -1515,7 +1515,7 @@ mod moderation_pages {
     #[test]
     #[ignore = "writes HTML previews for looking at the pages by eye"]
     fn write_previews() {
-        let Some(dir) = std::env::var_os("QUILL_PREVIEW_DIR") else {
+        let Some(dir) = std::env::var_os("PLAIT_PREVIEW_DIR") else {
             return;
         };
         let dir = std::path::PathBuf::from(dir);

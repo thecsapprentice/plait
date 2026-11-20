@@ -1,8 +1,8 @@
 # Error codes
 
-Generated from `plait_proto::codes`; don't edit by hand (`QUILL_WRITE_CODES=1 cargo test -p plait-proto codes`).
+Generated from `plait_proto::codes`; don't edit by hand (`PLAIT_WRITE_CODES=1 cargo test -p plait-proto codes`).
 
-Every problem Quill can show has a code, `Q-AACC`: `AA` is the area and `CC` the case. In each area, 01–49 are refusals by the server and 50–99 are decided by the client. The desktop app shows codes in advanced mode; the CLI always prints them. A code never changes meaning, and a retired code is never reused.
+Every problem Plait can show has a code, `Q-AACC`: `AA` is the area and `CC` the case. In each area, 01–49 are refusals by the server and 50–99 are decided by the client. The desktop app shows codes in advanced mode; the CLI always prints them. A code never changes meaning, and a retired code is never reused.
 
 ## Q-10xx: Connection and the server
 
@@ -50,16 +50,16 @@ Every problem Quill can show has a code, `Q-AACC`: `AA` is the area and `CC` the
 | --- | --- | --- |
 | Q-1350 | `STORE_IO` | The store file couldn't be read or written. |
 | Q-1351 | `STORE_EXISTS` | A store already exists where a new one was to be made. |
-| Q-1352 | `STORE_IN_USE` | The store is open in another copy of Quill. |
-| Q-1353 | `NOT_A_STORE` | That file isn't a Quill store. |
-| Q-1354 | `STORE_TOO_NEW` | The store was made by a newer Quill: update this one. |
+| Q-1352 | `STORE_IN_USE` | The store is open in another copy of Plait. |
+| Q-1353 | `NOT_A_STORE` | That file isn't a Plait store. |
+| Q-1354 | `STORE_TOO_NEW` | The store was made by a newer Plait: update this one. |
 | Q-1355 | `STORE_DAMAGED` | The store is damaged. |
 | Q-1356 | `WRONG_PASSPHRASE` | Wrong passphrase, or the keychain holds a different key. |
 | Q-1357 | `WRONG_UNLOCK` | The store is unlocked another way (passphrase or keychain). |
 | Q-1358 | `KEY_NOT_IN_KEYCHAIN` | The store's key isn't in this computer's keychain. |
 | Q-1359 | `KEYCHAIN_FAILED` | The keychain refused or failed. |
 | Q-1360 | `STORE_DATABASE` | The store's database failed. |
-| Q-1361 | `NO_KEYCHAIN` | This computer has no keychain for Quill's key: choose a passphrase. |
+| Q-1361 | `NO_KEYCHAIN` | This computer has no keychain for Plait's key: choose a passphrase. |
 | Q-1362 | `STORES_NOT_MOVED` | The stores couldn't be moved to that folder. |
 | Q-1363 | `PASSPHRASE_TOO_SHORT` | A store's passphrase must be at least 12 characters. |
 | Q-1364 | `STORE_BUSY` | The store is busy with something else; try again in a moment. |

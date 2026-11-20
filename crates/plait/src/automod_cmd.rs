@@ -1,4 +1,4 @@
-//! `quill admin automod`: moderation scripts, their chains, common data,
+//! `plait admin automod`: moderation scripts, their chains, common data,
 //! templates and dry runs. Administrators only.
 
 use std::io::Read;
@@ -152,7 +152,7 @@ pub async fn automod(ctx: &Ctx, cmd: AutomodCommand) -> Result<()> {
             let scripts = client.automod_scripts().await?;
             if scripts.is_empty() {
                 println!(
-                    "No scripts yet. `quill admin automod templates` lists ones to start from."
+                    "No scripts yet. `plait admin automod templates` lists ones to start from."
                 );
             }
             for s in scripts {
@@ -190,7 +190,7 @@ pub async fn automod(ctx: &Ctx, cmd: AutomodCommand) -> Result<()> {
                 })
                 .await?;
             println!(
-                "Uploaded {} ({}, {}). Add it to a chain with `quill admin automod chain`.",
+                "Uploaded {} ({}, {}). Add it to a chain with `plait admin automod chain`.",
                 s.name,
                 s.id,
                 mode(&s)
@@ -284,7 +284,7 @@ pub async fn automod(ctx: &Ctx, cmd: AutomodCommand) -> Result<()> {
             println!("Created {} ({}).", s.name, s.id);
             for d in &s.data {
                 println!(
-                    "It reads the common data entry {d}: fill it with `quill admin automod data set {d} <file>`."
+                    "It reads the common data entry {d}: fill it with `plait admin automod data set {d} <file>`."
                 );
             }
         }

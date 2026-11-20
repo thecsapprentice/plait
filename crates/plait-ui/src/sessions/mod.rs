@@ -74,7 +74,7 @@ pub(crate) fn standing_line(s: &SessionStanding) -> Option<String> {
     match s {
         SessionStanding::Joined => None,
         SessionStanding::Waiting => Some(
-            "This computer isn't in it yet. Another of your devices for this persona adds it when it next opens Quill."
+            "This computer isn't in it yet. Another of your devices for this persona adds it when it next opens Plait."
                 .into(),
         ),
         SessionStanding::NoKeys => Some(

@@ -757,7 +757,7 @@ pub async fn admin(ctx: &Ctx, cmd: AdminCommand) -> Result<()> {
                             .unwrap_or(usize::MAX)
                             .saturating_sub(e.targets.len());
                         let more = if more > 0 {
-                            format!(" and {more} more (quill admin log-entry {})", e.id)
+                            format!(" and {more} more (plait admin log-entry {})", e.id)
                         } else {
                             String::new()
                         };
@@ -800,7 +800,7 @@ pub async fn admin(ctx: &Ctx, cmd: AdminCommand) -> Result<()> {
                     }
                 }
                 if let Some(next) = &d.next {
-                    println!("more: quill admin log-entry {} --after {next}", e.id);
+                    println!("more: plait admin log-entry {} --after {next}", e.id);
                 }
             })
         }

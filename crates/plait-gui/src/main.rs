@@ -1,4 +1,4 @@
-//! Quill's desktop app: plait-ui's views over the native backend, in a
+//! Plait's desktop app: plait-ui's views over the native backend, in a
 //! Dioxus desktop window.
 
 use std::{rc::Rc, sync::Arc};
@@ -9,7 +9,7 @@ use plait_gui::{NativeBackend, settings::Paths};
 use plait_ui::{App, STYLE, Ui};
 
 /// A label added to the window's title, for development.
-const LABEL_ENV: &str = "QUILL_GUI_LABEL";
+const LABEL_ENV: &str = "PLAIT_GUI_LABEL";
 
 fn main() {
     let (dom, config, _runtime) = match setup() {
@@ -49,8 +49,8 @@ fn setup() -> anyhow::Result<(VirtualDom, dioxus_desktop::Config, tokio::runtime
     // For development: tells apart windows started side by side
     // (`scripts/dev-gui.py --guis 2`).
     let title = match std::env::var(LABEL_ENV) {
-        Ok(label) if !label.trim().is_empty() => format!("Quill ({})", label.trim()),
-        _ => "Quill".to_owned(),
+        Ok(label) if !label.trim().is_empty() => format!("Plait ({})", label.trim()),
+        _ => "Plait".to_owned(),
     };
     let config = dioxus_desktop::Config::new()
         .with_menu(None)

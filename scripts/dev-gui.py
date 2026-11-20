@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start a fresh, seeded Quill server in Docker and the desktop GUI with it.
+"""Start a fresh, seeded Plait server in Docker and the desktop GUI with it.
 
 For trying the GUI by hand. Each run:
 
@@ -19,7 +19,7 @@ For trying the GUI by hand. Each run:
   6. When the last GUI window closes, stops the server and deletes its
      database.
 
-Needs Docker (with Compose) and Rust, as for building Quill. Uses only
+Needs Docker (with Compose) and Rust, as for building Plait. Uses only
 Python's standard library, so it runs the same on Windows, macOS and Linux:
 
     python scripts/dev-gui.py                    # the usual run
@@ -51,7 +51,7 @@ PROJECT = "plait-gui-dev"
 DEFAULT_PORT = 8090
 # plait-seed's defaults (crates/plait-devtools/src/main.rs).
 ADMIN = "admin"
-DEMO_PASSWORD = "quill demo password"
+DEMO_PASSWORD = "plait demo password"
 SAMPLE_RULES = """# Be kind
 
 Write with care, and ask before you borrow someone's idea.
@@ -81,9 +81,9 @@ def need(tool: str, hint: str) -> None:
 
 def compose_env(args: argparse.Namespace) -> dict[str, str]:
     env = dict(os.environ)
-    env["QUILL_PORT"] = str(args.port)
-    env["QUILL_DOMAIN"] = "localhost"
-    env["QUILL_REGISTRATION_OPEN"] = "false" if args.closed else "true"
+    env["PLAIT_PORT"] = str(args.port)
+    env["PLAIT_DOMAIN"] = "localhost"
+    env["PLAIT_REGISTRATION_OPEN"] = "false" if args.closed else "true"
     return env
 
 
@@ -96,7 +96,7 @@ def compose(args: argparse.Namespace, *rest: str, check: bool = True) -> int:
 
 
 def seed_board(args: argparse.Namespace) -> list[str]:
-    """Runs plait-seed and returns its `QUILL_CAST` lines (the demo logins
+    """Runs plait-seed and returns its `PLAIT_CAST` lines (the demo logins
     and personas), showing the rest of what it prints."""
     cmd = ["docker", "compose", "-p", PROJECT, "-f", str(ROOT / "compose.yaml"),
            "--profile", "demo", "run", "--build", "--rm", "seed",
@@ -106,7 +106,7 @@ def seed_board(args: argparse.Namespace) -> list[str]:
                             stdout=subprocess.PIPE, text=True)
     cast = []
     for line in result.stdout.splitlines():
-        if line.startswith("QUILL_CAST "):
+        if line.startswith("PLAIT_CAST "):
             cast.append(line)
         else:
             print(line)
@@ -210,10 +210,10 @@ def gui_dirs(args: argparse.Namespace) -> list[Path]:
 def gui_env(args: argparse.Namespace, gui_dir: Path,
             label: str | None = None) -> dict[str, str]:
     env = dict(os.environ)
-    env["QUILL_GUI_DIR"] = str(gui_dir)
+    env["PLAIT_GUI_DIR"] = str(gui_dir)
     if label:
         # Shown in the window's title, to tell the windows apart.
-        env["QUILL_GUI_LABEL"] = label
+        env["PLAIT_GUI_LABEL"] = label
     if args.safe_render:
         # WebKitGTK on some Linux GPUs, VMs and virtual displays draws a
         # blank window unless it renders without GPU buffers.
@@ -224,7 +224,7 @@ def gui_env(args: argparse.Namespace, gui_dir: Path,
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Start a fresh, seeded Quill server in Docker and the desktop GUI with it.",
+        description="Start a fresh, seeded Plait server in Docker and the desktop GUI with it.",
     )
     p.add_argument("--port", type=int, default=DEFAULT_PORT,
                    help="port for the server on this machine (default: %(default)s)")
@@ -249,7 +249,7 @@ def parse_args() -> argparse.Namespace:
                    help="set server rules, and when accounts must accept them")
     p.add_argument("--rules-file", help="Markdown for the rules (default: a short sample)")
     p.add_argument("--gui-dir", type=Path, default=target_dir() / "dev-gui" / "profile",
-                   help="the GUI's settings and stores folder, QUILL_GUI_DIR (default: %(default)s); "
+                   help="the GUI's settings and stores folder, PLAIT_GUI_DIR (default: %(default)s); "
                         "with --guis, numbered folders beside it")
     p.add_argument("--guis", type=int, default=1, metavar="N",
                    help="start N GUI windows, each with its own folder, "
@@ -336,7 +336,7 @@ def main() -> None:
         else:
             say(f"Starting {len(dirs)} GUI windows; close them all to finish")
             for i, d in enumerate(dirs, 1):
-                print(f"    Quill ({i}): {d}")
+                print(f"    Plait ({i}): {d}")
             windows = [subprocess.Popen([str(gui_binary(args.release))], cwd=ROOT,
                                         env=gui_env(args, d, str(i)))
                        for i, d in enumerate(dirs, 1)]

@@ -1,4 +1,4 @@
-//! `quill`: the minimal command-line client.
+//! `plait`: the minimal command-line client.
 //!
 //! Covers the server address, accounts, personas and the prompt board. Each
 //! later phase adds the commands that exercise its server features.
@@ -25,12 +25,12 @@ use zeroize::Zeroizing;
 
 /// Environment variable read for the password in non-interactive use (tests,
 /// scripts). Prefer the interactive prompt.
-const PASSWORD_ENV: &str = "QUILL_PASSWORD";
+const PASSWORD_ENV: &str = "PLAIT_PASSWORD";
 
 #[derive(Parser)]
-#[command(name = "quill", version, about = "Quill command-line client")]
+#[command(name = "plait", version, about = "Plait command-line client")]
 struct Cli {
-    /// Encrypted local store (default: platform data dir, or $QUILL_STORE).
+    /// Encrypted local store (default: platform data dir, or $PLAIT_STORE).
     #[arg(long, global = true)]
     store: Option<PathBuf>,
 
@@ -124,7 +124,7 @@ struct UsernameArg {
 struct RegisterArgs {
     /// Private login name (never shown publicly).
     username: String,
-    /// Accept the server rules, naming the version you read (`quill rules
+    /// Accept the server rules, naming the version you read (`plait rules
     /// show`). Needed when the server asks new accounts to accept them.
     #[arg(long)]
     accept_rules: Option<u32>,
@@ -164,7 +164,7 @@ impl Ctx {
         let server = self
             .store
             .server()?
-            .context("no server set; run `quill server <url>` first")?;
+            .context("no server set; run `plait server <url>` first")?;
         let client = Client::new(&server)?;
         Ok(match self.store.token()? {
             Some(token) => client.with_token(token.as_str()),
@@ -379,12 +379,12 @@ async fn upkeep(ctx: &Ctx) {
     };
     match plait_core::devices::maintain(&ctx.store, &client).await {
         Ok(report) if report.caught_up.removed => eprintln!(
-            "This device was removed from your login's devices: its persona keys are gone. Link it again with `quill device link`."
+            "This device was removed from your login's devices: its persona keys are gone. Link it again with `plait device link`."
         ),
         Ok(report) => {
             if report.caught_up.stale {
                 eprintln!(
-                    "This device was away longer than the server keeps your devices' messages. Link it again with `quill device link`; its keys and sessions stay."
+                    "This device was away longer than the server keeps your devices' messages. Link it again with `plait device link`; its keys and sessions stay."
                 );
             }
             for (id, why) in &report.sessions.problems {

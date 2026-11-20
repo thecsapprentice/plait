@@ -28,7 +28,7 @@ use plait_proto::{
 };
 use serde_json::Value;
 
-const BASE: &str = "https://quill.test/openapi.json";
+const BASE: &str = "https://plait.test/openapi.json";
 
 async fn writer(client: &Client, handle: &str) -> (Persona, Store) {
     let p = client

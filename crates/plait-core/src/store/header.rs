@@ -11,7 +11,7 @@
 //!
 //! | Bytes | Field |
 //! | --- | --- |
-//! | 8 | magic `QUILLSDB` |
+//! | 8 | magic `PLAITSDB` |
 //! | 4 | format version (1) |
 //! | 16 | file id (random; binds pages to this file) |
 //! | 8 | sequence number |
@@ -34,7 +34,7 @@ use super::StoreError;
 pub(crate) const HEADER_REGION: u64 = 4096;
 const SLOT_OFFSETS: [u64; 2] = [0, 2048];
 
-const MAGIC: &[u8; 8] = b"QUILLSDB";
+const MAGIC: &[u8; 8] = b"PLAITSDB";
 const VERSION: u32 = 1;
 /// Bytes covered by the wrapped key's associated data.
 const AAD_LEN: usize = 8 + 4 + 16 + 8 + 1 + 12 + 16;

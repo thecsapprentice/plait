@@ -1,4 +1,4 @@
-//! Quill client core, shared by the CLI and (later) the desktop and web
+//! Plait client core, shared by the CLI and (later) the desktop and web
 //! clients.
 //!
 //! It provides the API client and the encrypted local store that holds

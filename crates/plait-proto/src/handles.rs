@@ -33,11 +33,11 @@ crate::board::string_enum! {
 crate::board::string_enum! {
     /// Where a reserved entry came from.
     ReservedSource {
-        /// Quill's starting list; administrators may remove these.
+        /// Plait's starting list; administrators may remove these.
         Default => "default",
         /// Added by an administrator in Server settings or the API.
         Admin => "admin",
-        /// Loaded from the file named by `QUILL_RESERVED_HANDLES_FILE`;
+        /// Loaded from the file named by `PLAIT_RESERVED_HANDLES_FILE`;
         /// changed only by editing that file.
         File => "file",
         /// The server's own name, always reserved; not stored.
@@ -139,7 +139,7 @@ pub const DEFAULT_WORDS: &[&str] = &[
     "sysop",
     "root",
     "superuser",
-    "quill",
+    "plait",
     "security",
     "abuse",
     "operator",
@@ -343,7 +343,7 @@ mod tests {
             "adm1n",
             "m0derator",
             "supp0rt",
-            "the_quill",
+            "the_plait",
             "r00t",
             "everyone",
             "no_reply",
@@ -362,7 +362,7 @@ mod tests {
             "allison",
             "helpful_otter",
             "lanterns",
-            "quilled",
+            "plaited",
             "all_in",
         ] {
             assert!(!is_reserved(h, &list), "{h} should be allowed");

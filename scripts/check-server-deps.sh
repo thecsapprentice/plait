@@ -20,7 +20,7 @@ BANNED=(
   'x25519-dalek'    # key agreement: only clients do this
   'age'             # backup encryption: only clients do this
   'plait-core'      # client library: holds all session keys
-  'quill'           # CLI client
+  'plait'           # CLI client
   'plait-ui'        # the writing client's views (sessions are decrypted there)
   'plait-gui'       # desktop client
 )

@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Overrides where the app keeps its settings and stores (tests, and
 /// running two copies side by side).
-pub const DIR_ENV: &str = "QUILL_GUI_DIR";
+pub const DIR_ENV: &str = "PLAIT_GUI_DIR";
 
 /// Where the settings file and the default stores folder are.
 #[derive(Debug, Clone)]
@@ -22,7 +22,7 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// `$QUILL_GUI_DIR`, else the platform's config and data folders.
+    /// `$PLAIT_GUI_DIR`, else the platform's config and data folders.
     pub fn default_paths() -> anyhow::Result<Self> {
         if let Some(dir) = std::env::var_os(DIR_ENV) {
             return Ok(Self::in_dir(Path::new(&dir)));

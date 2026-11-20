@@ -16,7 +16,7 @@ pub mod text;
 pub use plait_proto::automod::{Hook, OnError};
 pub use run::{Automated, FlagTarget, Verdict, applies_to, check, dry_run, file_flag};
 
-/// What scripts and common data may use. Set from `QUILL_AUTOMOD_*`
+/// What scripts and common data may use. Set from `PLAIT_AUTOMOD_*`
 /// environment variables; the defaults are safe for a small server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Limits {

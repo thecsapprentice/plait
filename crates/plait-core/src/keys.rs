@@ -485,13 +485,13 @@ pub async fn publish(
 ) -> Result<PublishOutcome, CoreError> {
     let device = load_device(store, persona.id)?.ok_or_else(|| {
         keys_err(format!(
-            "this device has no key for @{}; run `quill keys init --as {}` first",
+            "this device has no key for @{}; run `plait keys init --as {}` first",
             persona.handle, persona.handle
         ))
     })?;
     let id = device.id.ok_or_else(|| {
         keys_err(format!(
-            "this device isn't registered for @{} yet; run `quill keys init --as {}`",
+            "this device isn't registered for @{} yet; run `plait keys init --as {}`",
             persona.handle, persona.handle
         ))
     })?;

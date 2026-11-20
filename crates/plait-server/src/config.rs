@@ -1,4 +1,4 @@
-//! Server configuration, read from `QUILL_*` environment variables.
+//! Server configuration, read from `PLAIT_*` environment variables.
 
 use std::net::SocketAddr;
 
@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 use plait_proto::{api::Limits, board::TagPolicy};
 
 /// The upstream repository. Operators running a modified server must point
-/// `QUILL_SOURCE_URL` at their own source.
-pub const DEFAULT_SOURCE_URL: &str = "https://github.com/thecsapprentice/quill";
+/// `PLAIT_SOURCE_URL` at their own source.
+pub const DEFAULT_SOURCE_URL: &str = "https://github.com/thecsapprentice/plait";
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -25,12 +25,12 @@ pub struct Config {
     /// offering it to everyone who uses the server over a network.
     pub source_url: String,
     /// A file of reserved handles synced at startup
-    /// (`QUILL_RESERVED_HANDLES_FILE`): one per line, a word unless it starts
+    /// (`PLAIT_RESERVED_HANDLES_FILE`): one per line, a word unless it starts
     /// with `=` (exact handle), `#` comments.
     pub reserved_handles_file: Option<std::path::PathBuf>,
     pub limits: Limits,
     /// Starting value of the "attachments" server setting
-    /// (`QUILL_ATTACHMENTS`); the live value is in the database.
+    /// (`PLAIT_ATTACHMENTS`); the live value is in the database.
     pub attachments: bool,
     /// Limits for moderation scripts and their common data.
     pub automod: crate::moderation::Limits,
@@ -39,26 +39,26 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self> {
         let database_url =
-            std::env::var("QUILL_DATABASE_URL").context("QUILL_DATABASE_URL must be set")?;
+            std::env::var("PLAIT_DATABASE_URL").context("PLAIT_DATABASE_URL must be set")?;
         Ok(Self {
-            domain: var_or("QUILL_DOMAIN", "localhost"),
-            bind: var_or("QUILL_BIND", "127.0.0.1:8080")
+            domain: var_or("PLAIT_DOMAIN", "localhost"),
+            bind: var_or("PLAIT_BIND", "127.0.0.1:8080")
                 .parse()
-                .context("QUILL_BIND must be host:port")?,
+                .context("PLAIT_BIND must be host:port")?,
             database_url,
-            registration_open: parse_or("QUILL_REGISTRATION_OPEN", true)?,
-            max_personas_per_account: parse_or("QUILL_MAX_PERSONAS", 20)?,
-            token_ttl_days: parse_or("QUILL_TOKEN_TTL_DAYS", 30)?,
+            registration_open: parse_or("PLAIT_REGISTRATION_OPEN", true)?,
+            max_personas_per_account: parse_or("PLAIT_MAX_PERSONAS", 20)?,
+            token_ttl_days: parse_or("PLAIT_TOKEN_TTL_DAYS", 30)?,
             tag_policy: tag_policy_from_env()?,
-            source_url: var_or("QUILL_SOURCE_URL", DEFAULT_SOURCE_URL),
-            reserved_handles_file: std::env::var_os("QUILL_RESERVED_HANDLES_FILE")
+            source_url: var_or("PLAIT_SOURCE_URL", DEFAULT_SOURCE_URL),
+            reserved_handles_file: std::env::var_os("PLAIT_RESERVED_HANDLES_FILE")
                 .filter(|v| !v.is_empty())
                 .map(Into::into),
             limits: Limits {
                 retention_days: retention_days()?,
                 ..Limits::default()
             },
-            attachments: parse_or("QUILL_ATTACHMENTS", true)?,
+            attachments: parse_or("PLAIT_ATTACHMENTS", true)?,
             automod: automod_limits()?,
         })
     }
@@ -82,34 +82,34 @@ impl Config {
     }
 }
 
-/// `QUILL_AUTOMOD_MAX_OPERATIONS`, `QUILL_AUTOMOD_TIME_MS`,
-/// `QUILL_AUTOMOD_DATA_ENTRY_BYTES` and `QUILL_AUTOMOD_DATA_TOTAL_BYTES`.
+/// `PLAIT_AUTOMOD_MAX_OPERATIONS`, `PLAIT_AUTOMOD_TIME_MS`,
+/// `PLAIT_AUTOMOD_DATA_ENTRY_BYTES` and `PLAIT_AUTOMOD_DATA_TOTAL_BYTES`.
 fn automod_limits() -> Result<crate::moderation::Limits> {
     let d = crate::moderation::Limits::default();
     let limits = crate::moderation::Limits {
-        max_operations: parse_or("QUILL_AUTOMOD_MAX_OPERATIONS", d.max_operations)?,
-        time_ms: parse_or("QUILL_AUTOMOD_TIME_MS", d.time_ms)?,
-        data_entry_bytes: parse_or("QUILL_AUTOMOD_DATA_ENTRY_BYTES", d.data_entry_bytes)?,
-        data_total_bytes: parse_or("QUILL_AUTOMOD_DATA_TOTAL_BYTES", d.data_total_bytes)?,
+        max_operations: parse_or("PLAIT_AUTOMOD_MAX_OPERATIONS", d.max_operations)?,
+        time_ms: parse_or("PLAIT_AUTOMOD_TIME_MS", d.time_ms)?,
+        data_entry_bytes: parse_or("PLAIT_AUTOMOD_DATA_ENTRY_BYTES", d.data_entry_bytes)?,
+        data_total_bytes: parse_or("PLAIT_AUTOMOD_DATA_TOTAL_BYTES", d.data_total_bytes)?,
     };
     anyhow::ensure!(
         limits.max_operations > 0 && limits.time_ms > 0,
-        "QUILL_AUTOMOD_MAX_OPERATIONS and QUILL_AUTOMOD_TIME_MS must be above 0"
+        "PLAIT_AUTOMOD_MAX_OPERATIONS and PLAIT_AUTOMOD_TIME_MS must be above 0"
     );
     anyhow::ensure!(
         limits.data_entry_bytes <= limits.data_total_bytes,
-        "QUILL_AUTOMOD_DATA_ENTRY_BYTES can't be more than QUILL_AUTOMOD_DATA_TOTAL_BYTES"
+        "PLAIT_AUTOMOD_DATA_ENTRY_BYTES can't be more than PLAIT_AUTOMOD_DATA_TOTAL_BYTES"
     );
     Ok(limits)
 }
 
-/// `QUILL_RETENTION_DAYS`: how long the server keeps any ciphertext, read
+/// `PLAIT_RETENTION_DAYS`: how long the server keeps any ciphertext, read
 /// or not (2k). Clients that are away longer catch up from their other
 /// devices. `-1` turns deleting by age off: messages then stay until every
 /// device has read them.
 fn retention_days() -> Result<Option<u32>> {
     let default = Limits::default().retention_days.map_or(-1, i64::from);
-    parse_retention(parse_or("QUILL_RETENTION_DAYS", default)?)
+    parse_retention(parse_or("PLAIT_RETENTION_DAYS", default)?)
 }
 
 fn parse_retention(days: i64) -> Result<Option<u32>> {
@@ -117,20 +117,20 @@ fn parse_retention(days: i64) -> Result<Option<u32>> {
         -1 => Ok(None),
         1..=3650 => Ok(u32::try_from(days).ok()),
         _ => anyhow::bail!(
-            "QUILL_RETENTION_DAYS must be from 1 to 3650, or -1 to keep messages regardless of age"
+            "PLAIT_RETENTION_DAYS must be from 1 to 3650, or -1 to keep messages regardless of age"
         ),
     }
 }
 
-/// `QUILL_TAG_POLICY` sets the starting value of the "new tags" setting;
+/// `PLAIT_TAG_POLICY` sets the starting value of the "new tags" setting;
 /// administrators change it in Server settings afterwards. The old values
 /// `user` and `both` mean `open`.
 fn tag_policy_from_env() -> Result<TagPolicy> {
-    match std::env::var("QUILL_TAG_POLICY").as_deref() {
+    match std::env::var("PLAIT_TAG_POLICY").as_deref() {
         Err(_) | Ok("user" | "both") => Ok(TagPolicy::Open),
         Ok(v) => v
             .parse()
-            .context("QUILL_TAG_POLICY must be open, approval or curated"),
+            .context("PLAIT_TAG_POLICY must be open, approval or curated"),
     }
 }
 

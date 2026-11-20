@@ -6,7 +6,7 @@
 //! shares (bearer auth, problem details, the common error statuses) are
 //! filled in here once instead of on each handler. `docs/openapi.json` is
 //! the committed copy; a test fails when it differs from what the code
-//! generates (`QUILL_WRITE_OPENAPI=1` rewrites it).
+//! generates (`PLAIT_WRITE_OPENAPI=1` rewrites it).
 
 use utoipa::{
     Modify, OpenApi,
@@ -23,8 +23,8 @@ use plait_proto::api::{PROBLEM_CONTENT_TYPE, Problem};
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Quill client API",
-        description = "The JSON-over-HTTPS API every Quill client uses (protocol draft, section 7). \
+        title = "Plait client API",
+        description = "The JSON-over-HTTPS API every Plait client uses (protocol draft, section 7). \
 Federation between servers uses ActivityPub instead.\n\n\
 Authenticated operations take `Authorization: Bearer <token>` from `POST /auth/register` or \
 `POST /auth/login`. Errors are RFC 9457 problem details (`application/problem+json`). Every \
@@ -216,15 +216,15 @@ mod tests {
     fn the_committed_openapi_file_is_what_the_code_generates() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/openapi.json");
         let text = document_json();
-        if std::env::var_os("QUILL_WRITE_OPENAPI").is_some() {
+        if std::env::var_os("PLAIT_WRITE_OPENAPI").is_some() {
             std::fs::write(&path, &text).unwrap();
         }
         let committed = std::fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("{} missing; set QUILL_WRITE_OPENAPI=1", path.display()));
+            .unwrap_or_else(|_| panic!("{} missing; set PLAIT_WRITE_OPENAPI=1", path.display()));
         assert!(
             committed == text,
             "docs/openapi.json differs from what the code generates: an API change needs the \
-             file rewritten (QUILL_WRITE_OPENAPI=1 cargo test -p plait-server openapi) and \
+             file rewritten (PLAIT_WRITE_OPENAPI=1 cargo test -p plait-server openapi) and \
              reviewed"
         );
     }

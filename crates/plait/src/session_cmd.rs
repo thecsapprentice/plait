@@ -1,4 +1,4 @@
-//! `quill sessions` and `quill session`: writing together.
+//! `plait sessions` and `plait session`: writing together.
 
 use std::path::PathBuf;
 

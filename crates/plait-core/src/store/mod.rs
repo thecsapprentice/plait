@@ -39,21 +39,21 @@ use vault::Vault;
 use zeroize::Zeroizing;
 
 /// Environment variable that overrides the store file location.
-pub const STORE_ENV: &str = "QUILL_STORE";
+pub const STORE_ENV: &str = "PLAIT_STORE";
 
-/// Default store path: `$QUILL_STORE`, else the platform data directory
-/// (e.g. `~/.local/share/quill/store.quill` on Linux).
+/// Default store path: `$PLAIT_STORE`, else the platform data directory
+/// (e.g. `~/.local/share/plait/store.plait` on Linux).
 pub fn default_path() -> Result<PathBuf, StoreError> {
     if let Some(p) = std::env::var_os(STORE_ENV) {
         return Ok(PathBuf::from(p));
     }
-    let dirs = directories::ProjectDirs::from("", "", "quill").ok_or_else(|| {
+    let dirs = directories::ProjectDirs::from("", "", "plait").ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
-            "no home directory; set QUILL_STORE",
+            "no home directory; set PLAIT_STORE",
         )
     })?;
-    Ok(dirs.data_dir().join("store.quill"))
+    Ok(dirs.data_dir().join("store.plait"))
 }
 
 /// Version of the table layout inside the store.
@@ -65,9 +65,9 @@ pub enum StoreError {
     Io(#[from] io::Error),
     #[error("{0} already exists")]
     AlreadyExists(PathBuf),
-    #[error("the store is open in another quill process")]
+    #[error("the store is open in another plait process")]
     InUse,
-    #[error("not a Quill store file")]
+    #[error("not a Plait store file")]
     NotAStore,
     #[error("store format version {0} is not supported by this client")]
     UnsupportedVersion(u32),
@@ -131,7 +131,7 @@ fn page_key(data_key: &[u8; 32], file_id: &[u8; 16]) -> Zeroizing<[u8; 32]> {
     let mut out = Zeroizing::new([0u8; 32]);
     // 32 bytes is always a valid HKDF-SHA256 output length.
     let _ = hkdf::Hkdf::<sha2::Sha256>::new(Some(file_id), data_key)
-        .expand(b"quill store pages v1", out.as_mut());
+        .expand(b"plait store pages v1", out.as_mut());
     out
 }
 

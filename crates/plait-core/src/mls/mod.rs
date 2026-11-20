@@ -24,7 +24,7 @@ use crate::{CoreError, Store, keys::DeviceKey};
 /// A client table's entries, as `(key, value)`.
 pub(crate) type Entries = Vec<(Vec<u8>, Vec<u8>)>;
 
-/// The one ciphersuite Quill uses (RFC 9420's mandatory-to-implement).
+/// The one ciphersuite Plait uses (RFC 9420's mandatory-to-implement).
 pub const CIPHERSUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
 /// Leaf extension carrying the device certificate (protocol draft, 6).
 pub const DEVICE_CERT_EXTENSION: u16 = 0xF0A1;
@@ -146,7 +146,7 @@ pub(crate) fn credential(actor_uri: &str, device: &DeviceKey) -> CredentialWithK
     }
 }
 
-/// The capabilities every Quill leaf advertises: our ciphersuite, basic
+/// The capabilities every Plait leaf advertises: our ciphersuite, basic
 /// credentials, the device-certificate extension, and the last-resort
 /// KeyPackage extension (which a package can only carry if listed).
 pub fn capabilities() -> Capabilities {

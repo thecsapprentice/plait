@@ -225,7 +225,7 @@ pub fn LinkingStep() -> Element {
         Stage::Naming => rsx! {
             Card {
                 title: "Link this computer",
-                lede: "Link this computer to a device where you already use Quill on {server}. It then gets your personas' keys, and can write as them here. Have that device to hand.",
+                lede: "Link this computer to a device where you already use Plait on {server}. It then gets your personas' keys, and can write as them here. Have that device to hand.",
                 Field {
                     label: "What should your other devices call this computer?",
                     id: "device-name",
@@ -260,7 +260,7 @@ pub fn LinkingStep() -> Element {
             rsx! {
                 Card {
                     title: "Type these words on your other device",
-                    lede: "On a device where you already use Quill, open Settings, then Devices, and choose Link a new computer. Type these six words there.",
+                    lede: "On a device where you already use Plait, open Settings, then Devices, and choose Link a new computer. Type these six words there.",
                     Words { words: link.words.clone(), label: "The six words" }
                     div { class: "link-code",
                         Qr { code: link.code.clone() }
@@ -647,7 +647,7 @@ fn ApprovePanel(on_linked: EventHandler<()>) -> Element {
     });
     let server = model.read().server_name();
     let count = typed().split_whitespace().count();
-    let ready = count == 6 || typed().trim().starts_with("quill-link:");
+    let ready = count == 6 || typed().trim().starts_with("plait-link:");
     rsx! {
         section { class: "panel", aria_label: "Link a new computer",
             h2 { "Link a new computer" }

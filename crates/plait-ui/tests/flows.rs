@@ -51,7 +51,7 @@ async fn first_run(d: &mut Driver, domain: &str, login: &str, handle: &str) {
 async fn a_new_writer_gets_from_nothing_to_writing() {
     let sim = Sim::new().with_server(SERVER).rc();
     let mut d = app(&sim);
-    assert_eq!(d.heading().as_deref(), Some("Welcome to Quill"));
+    assert_eq!(d.heading().as_deref(), Some("Welcome to Plait"));
     assert!(d.button_disabled("Continue"), "nothing typed yet");
 
     first_run(&mut d, SERVER, "ink", "ink_fox").await;
@@ -65,7 +65,7 @@ async fn a_server_that_cannot_be_reached_is_said_gently_while_typing() {
     let sim = Sim::new().with_server(SERVER).rc();
     let mut d = app(&sim);
     d.type_into("server-address", "nowhere.example").await;
-    d.wait_for_text("No Quill server answers there yet").await;
+    d.wait_for_text("No Plait server answers there yet").await;
     assert!(d.button_disabled("Continue"));
     d.type_into("server-address", SERVER).await;
     d.wait_for_text("Takes new logins").await;
@@ -311,7 +311,7 @@ async fn rules_that_fail_to_load_are_never_a_dead_end() {
     sim.server(SERVER, |s| s.rules_fail = true);
     let mut d = app(&sim);
     to_sign_up(&mut d, SERVER).await;
-    d.wait_for_text("Quill couldn't load them").await;
+    d.wait_for_text("Plait couldn't load them").await;
     d.type_into("login-name", "ink").await;
     d.type_into("login-password", PASSWORD).await;
     assert!(d.button_disabled("Make my login"));
@@ -367,7 +367,7 @@ async fn a_second_server_is_added_and_switched_to_and_back() {
     d.wait_for_text("Takes new logins").await;
     d.click("Continue").await;
     d.wait_for_text("Make a login on other.example").await;
-    make_login(&mut d, "quill").await;
+    make_login(&mut d, "plait").await;
     d.wait_for_text("Make your first persona").await;
     d.click("Not now").await;
     d.wait_for_text("Connected to other.example").await;
@@ -459,7 +459,7 @@ async fn removing_the_open_server_opens_the_other() {
     d.type_into("server-address", OTHER).await;
     d.wait_for_text("Takes new logins").await;
     d.click("Continue").await;
-    make_login(&mut d, "quill").await;
+    make_login(&mut d, "plait").await;
     d.click("Not now").await;
     d.wait_for_text("Connected to other.example").await;
     d.click("Settings").await;

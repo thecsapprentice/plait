@@ -1,9 +1,9 @@
 //! Reserved persona handles: names writers can't take.
 //!
-//! The list lives in the `reserved_handles` table. It starts as Quill's
+//! The list lives in the `reserved_handles` table. It starts as Plait's
 //! defaults (seeded once, so administrators can remove them), administrators
 //! add and remove entries in Server settings or the API, and an optional
-//! file named by `QUILL_RESERVED_HANDLES_FILE` is synced at startup for large
+//! file named by `PLAIT_RESERVED_HANDLES_FILE` is synced at startup for large
 //! or automated lists. The server's own name is always reserved.
 //!
 //! How entries match is decided in [`plait_proto::handles`]; here the

@@ -27,11 +27,11 @@ registry! {
     STORE_IO = 1350,
     /// A store already exists where a new one was to be made.
     STORE_EXISTS = 1351,
-    /// The store is open in another copy of Quill.
+    /// The store is open in another copy of Plait.
     STORE_IN_USE = 1352,
-    /// That file isn't a Quill store.
+    /// That file isn't a Plait store.
     NOT_A_STORE = 1353,
-    /// The store was made by a newer Quill: update this one.
+    /// The store was made by a newer Plait: update this one.
     STORE_TOO_NEW = 1354,
     /// The store is damaged.
     STORE_DAMAGED = 1355,
@@ -45,7 +45,7 @@ registry! {
     KEYCHAIN_FAILED = 1359,
     /// The store's database failed.
     STORE_DATABASE = 1360,
-    /// This computer has no keychain for Quill's key: choose a passphrase.
+    /// This computer has no keychain for Plait's key: choose a passphrase.
     NO_KEYCHAIN = 1361,
     /// The stores couldn't be moved to that folder.
     STORES_NOT_MOVED = 1362,

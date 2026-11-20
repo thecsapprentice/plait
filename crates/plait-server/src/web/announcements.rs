@@ -33,7 +33,7 @@ use crate::{AppState, announcements, error::ApiError};
 
 /// Holds the id of the newest announcement the reader dismissed. `__Host-`
 /// for the same reasons as the session cookie; it names no account.
-const DISMISSED_COOKIE: &str = "__Host-quill_dismissed";
+const DISMISSED_COOKIE: &str = "__Host-plait_dismissed";
 
 /// How long a dismissal is remembered: a year.
 const DISMISSED_MAX_AGE: u32 = 365 * 24 * 60 * 60;
@@ -609,7 +609,7 @@ mod tests {
         let mut bad = HeaderMap::new();
         bad.append(
             header::COOKIE,
-            HeaderValue::from_static("__Host-quill_dismissed=not-a-uuid"),
+            HeaderValue::from_static("__Host-plait_dismissed=not-a-uuid"),
         );
         assert_eq!(dismissed(&bad), None);
         assert_eq!(dismissed(&HeaderMap::new()), None);

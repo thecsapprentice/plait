@@ -28,8 +28,8 @@ const NEAR_LIMIT: usize = 2_000;
 /// text inside a scrolling box, which the webview doesn't scroll for it.
 /// Installed once on the document, so it survives remounts.
 const FOLLOW_JS: &str = r#"
-  if (!window.__quillFollow) {
-    window.__quillFollow = true;
+  if (!window.__plaitFollow) {
+    window.__plaitFollow = true;
     const follow = (e) => {
       const t = e.target;
       if (!t || !t.classList || !t.classList.contains('over')) return;

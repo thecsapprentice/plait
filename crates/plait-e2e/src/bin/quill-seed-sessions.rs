@@ -40,20 +40,20 @@ struct Args {
     /// The demo accounts' shared password.
     #[arg(
         long,
-        env = "QUILL_DEMO_PASSWORD",
-        default_value = "quill demo password"
+        env = "PLAIT_DEMO_PASSWORD",
+        default_value = "plait demo password"
     )]
     password: String,
-    /// A file of `QUILL_CAST login handle…` lines from `plait-seed --cast`.
+    /// A file of `PLAIT_CAST login handle…` lines from `plait-seed --cast`.
     #[arg(long)]
     cast: PathBuf,
-    /// An app window's folder (QUILL_GUI_DIR); repeat for each window. Each
+    /// An app window's folder (PLAIT_GUI_DIR); repeat for each window. Each
     /// is signed in as the next demo writer.
     #[arg(long = "window", required = true)]
     windows: Vec<PathBuf>,
     /// Locks the windows' stores where there's no keychain to keep their
     /// keys in.
-    #[arg(long, default_value = "quill demo passphrase")]
+    #[arg(long, default_value = "plait demo passphrase")]
     passphrase: String,
 }
 
@@ -86,7 +86,7 @@ async fn run(args: Args) -> Result<()> {
     let cast: Vec<(String, Vec<String>)> = std::fs::read_to_string(&args.cast)
         .with_context(|| format!("reading {}", args.cast.display()))?
         .lines()
-        .filter_map(|l| l.strip_prefix("QUILL_CAST "))
+        .filter_map(|l| l.strip_prefix("PLAIT_CAST "))
         .map(|l| {
             let mut words = l.split_whitespace().map(str::to_owned);
             (words.next().unwrap_or_default(), words.collect())
@@ -193,7 +193,7 @@ async fn window_writer(
     let path = std::fs::read_dir(&stores)?
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .find(|p| p.extension().is_some_and(|x| x == "quill"))
+        .find(|p| p.extension().is_some_and(|x| x == "plait"))
         .with_context(|| format!("no store in {}", stores.display()))?;
     let store = match vault {
         Some(v) => Store::open(&path, Unlock::Keychain(v.as_ref())),

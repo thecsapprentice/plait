@@ -86,7 +86,7 @@ fn tag_with_id<'a>(html: &'a str, id: &str) -> &'a str {
 #[test]
 fn a_fresh_install_asks_for_the_server_with_a_labelled_plain_field() {
     let html = render(Fake::empty(), None);
-    assert!(html.contains("Welcome to Quill"), "{html}");
+    assert!(html.contains("Welcome to Plait"), "{html}");
     assert!(html.contains(r#"for="server-address""#));
     let input = tag_with_id(&html, "server-address");
     for rule in [
@@ -139,7 +139,7 @@ fn the_frame_names_its_parts_and_shows_no_ids() {
     assert_eq!(m.screen, Screen::Frame);
     let html = render(fake, Some(m));
     assert!(
-        html.contains(r#"<nav class="nav" aria-label="Quill""#),
+        html.contains(r#"<nav class="nav" aria-label="Plait""#),
         "{html}"
     );
     assert!(html.contains(r#"aria-current="page""#));
