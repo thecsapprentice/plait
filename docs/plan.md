@@ -799,7 +799,7 @@ Each phase is split into sub-phases, one pull request each, tracked in the [road
 * **Prompt states and requests.** Unlimited sessions per prompt. The author sets each prompt to open, busy or closed at any time; every request needs approval; ignored requests stay pending for the requester and expire after the configured window (default 30 days).
 
 - **No decision or read signals.** Declines are silent, and clients never send read receipts, typing indicators or `Read`/`View` activities.
-- **Full edit history.** `Update` and `Delete` never erase earlier versions; clients show the current state with full history on demand.
+- **Full edit history.** `Update` and `Delete` never erase earlier versions; clients show the current state with full history on demand. The last version decides the state, both when applied live and when merged from a history bundle, so an author's edit after their own delete restores the note (#104, decided 2026-11-19). That is what "Deleted. Undo" sends. Nothing a delete hides was ever erased: the partner already decrypted it, keeps it in the note's history, and could ignore the delete with a modified client.
 - **One pending request per account per prompt**, across personas, enforced by the requester's home server.
 - **Web clients link as limited devices by default**, with an opt-in to full.
 
