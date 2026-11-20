@@ -741,6 +741,14 @@ pub trait Backend {
     fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
     /// Brings back one of the writer's deleted notes, as a new edit (#104).
     fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
+    /// Names a new channel, or describes one again, for both writers.
+    /// `name` is as `quill_proto::validate::channel` allows.
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()>;
 
     // ---- Upkeep and settings --------------------------------------------------------------
 

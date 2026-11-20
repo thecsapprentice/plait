@@ -1869,6 +1869,20 @@ impl Backend for NativeBackend {
         })
     }
 
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()> {
+        let (id, name, about) = (id.to_owned(), name.to_owned(), about.map(str::to_owned));
+        self.call_locked(move |store, client| async move {
+            sessions::name_channel(&store, &client, &id, &name, about.as_deref())
+                .await
+                .map(|_| ())
+        })
+    }
+
     fn answers_seen(&self) -> Vec<Uuid> {
         self.opened()
             .ok()

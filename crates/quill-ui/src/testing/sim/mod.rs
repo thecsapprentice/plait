@@ -988,6 +988,15 @@ impl Backend for Sim {
         now(self.sim_change_note(id, seq, Change::Restore))
     }
 
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()> {
+        now(self.sim_name_channel(id, name, about))
+    }
+
     fn answers_seen(&self) -> Vec<Uuid> {
         self.open_store()
             .map(|(_, s, _)| s.requests.answers_seen)

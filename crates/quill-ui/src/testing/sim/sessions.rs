@@ -361,10 +361,22 @@ impl Sim {
     }
 
     fn channels_of(here: &Here, s: &SimSession, me: &str) -> Vec<ChannelView> {
+        // Story and Planning come first, described if either was.
+        let about = |n: &str| {
+            s.channels
+                .iter()
+                .find(|(c, _)| c == n)
+                .and_then(|(_, a)| a.clone())
+        };
         let names = DEFAULT_CHANNELS
             .iter()
-            .map(|n| ((*n).to_owned(), None))
-            .chain(s.channels.iter().cloned());
+            .map(|n| ((*n).to_owned(), about(n)))
+            .chain(
+                s.channels
+                    .iter()
+                    .filter(|(n, _)| !DEFAULT_CHANNELS.contains(&n.as_str()))
+                    .cloned(),
+            );
         names
             .map(|(name, summary)| {
                 let shown = here
@@ -692,6 +704,38 @@ impl Sim {
         Ok(())
     }
 
+    /// Names a channel or describes it again, refused as
+    /// `sessions::name_channel` refuses.
+    pub(super) fn sim_name_channel(
+        &self,
+        id: &str,
+        name: &str,
+        about: Option<&str>,
+    ) -> Result<(), Problem> {
+        let refuse = |text: String| Err(refused(codes::SESSION_CHECK_FAILED, &text));
+        if let Err(e) = quill_proto::validate::channel(name) {
+            return refuse(e.to_string());
+        }
+        let about = match quill_proto::validate::summary(about) {
+            Ok(a) => a,
+            Err(e) => return refuse(format!("description {e}")),
+        };
+        self.writing(|server, login| {
+            let session = server.session_mut(id);
+            if session.mine(login).is_none() || session.ended {
+                return refuse("the session has ended".into());
+            }
+            session.seq += 1;
+            match session.channels.iter_mut().find(|(n, _)| n == name) {
+                Some(c) => c.1 = about,
+                None => session.channels.push((name.to_owned(), about)),
+            }
+            Ok(())
+        })?;
+        self.live();
+        Ok(())
+    }
+
     /// What upkeep does once the server can be reached: every session's
     /// waiting notes go.
     pub(super) fn sim_flush_all(&self) {
@@ -714,6 +758,12 @@ impl Sim {
             .filter(|(s, _)| s == id)
             .map(|(_, q)| (q.text.clone(), q.refused.is_some()))
             .collect()
+    }
+
+    /// The named channels in a session beyond Story and Planning, as the
+    /// server holds them, with their descriptions.
+    pub fn channels_in(&self, domain: &str, id: &str) -> Vec<(String, Option<String>)> {
+        self.server(domain, |s| s.session_mut(id).channels.clone())
     }
 
     /// The notes in a session, as the server holds them: (author, channel,

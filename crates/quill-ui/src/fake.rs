@@ -367,6 +367,9 @@ impl Backend for Fake {
     fn restore_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
         ready(Ok(()))
     }
+    fn name_channel<'a>(&'a self, _: &'a str, _: &'a str, _: Option<&'a str>) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
     fn upkeep(&self) -> Call<'_, Option<Problem>> {
         ready(Ok(None))
     }
