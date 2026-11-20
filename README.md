@@ -18,16 +18,16 @@ and servers federate over ActivityPub.
 
 | Crate | Kind | Role |
 | --- | --- | --- |
-| `quill-proto` | lib | Shared API types and validation. No cryptography. |
-| `quill-mls-envelope` | lib | Reads MLS framing headers for routing; cannot decrypt. |
-| `quill-board-ui` | lib | Dioxus components for the prompt board, rendered on the server. |
-| `quill-server` | bin | axum server: web board, client API, (later) delivery service and federation. |
-| `quill-core` | lib | Client library: API client, local profile, (later) all MLS state. |
+| `plait-proto` | lib | Shared API types and validation. No cryptography. |
+| `plait-mls-envelope` | lib | Reads MLS framing headers for routing; cannot decrypt. |
+| `plait-board-ui` | lib | Dioxus components for the prompt board, rendered on the server. |
+| `plait-server` | bin | axum server: web board, client API, (later) delivery service and federation. |
+| `plait-core` | lib | Client library: API client, local profile, (later) all MLS state. |
 | `quill` | bin | Minimal CLI client that exercises every server feature. |
-| `quill-devtools` | bin | `quill-seed`, the demo-data seeder. Development only, never in the server image. |
-| `quill-e2e` | tests | End-to-end tests: real server and real Postgres. |
+| `plait-devtools` | bin | `plait-seed`, the demo-data seeder. Development only, never in the server image. |
+| `plait-e2e` | tests | End-to-end tests: real server and real Postgres. |
 
-**Core invariant:** `quill-server` never links MLS, HPKE or client crates.
+**Core invariant:** `plait-server` never links MLS, HPKE or client crates.
 [`scripts/check-server-deps.sh`](scripts/check-server-deps.sh) enforces this
 in CI, so a decryption path cannot be added by accident.
 
@@ -38,7 +38,7 @@ With Docker installed, this builds the server and starts it with a database:
 ```sh
 docker compose up --build -d
 # Open http://localhost:8080/ and register an account, then make it an admin:
-docker compose exec server quill-server make-admin yourname
+docker compose exec server plait-server make-admin yourname
 docker compose down        # stop; add -v to also delete the database
 ```
 
@@ -75,7 +75,7 @@ python scripts/dev-gui.py --no-sessions     # no demo requests or sessions; firs
 python scripts/dev-gui.py --help            # the other options
 ```
 
-It needs Docker and Rust. It uses its own Compose project (`quill-gui-dev`),
+It needs Docker and Rust. It uses its own Compose project (`plait-gui-dev`),
 so the database from `docker compose up` above is left alone. In the GUI,
 type `localhost:8090` as the server, then make a login or sign in as one of
 the demo accounts it lists.
@@ -114,46 +114,46 @@ createdb -O quill quill_dev
 
 # Run the server.
 QUILL_DATABASE_URL=postgres://quill:PASSWORD@localhost/quill_dev \
-  cargo run -p quill-server
+  cargo run -p plait-server
 
 # Open http://localhost:8080/ for the web board, or use the CLI in another terminal.
-cargo run -p quill -- server http://localhost:8080
-cargo run -p quill -- register yourname
-cargo run -p quill -- persona new your_handle --display-name "Your Name"
-cargo run -p quill -- persona list
+cargo run -p plait -- server http://localhost:8080
+cargo run -p plait -- register yourname
+cargo run -p plait -- persona new your_handle --display-name "Your Name"
+cargo run -p plait -- persona list
 
 # Post and search prompts (Markdown bodies; tags as namespace:name).
-cargo run -p quill -- prompt post --as your_handle --title "The ledger" \
+cargo run -p plait -- prompt post --as your_handle --title "The ledger" \
   --body "A keeper finds *entries* in her own hand." \
   --maturity teen --tag genre:horror --tag "theme:Lighthouses"
-cargo run -p quill -- prompt list --include genre:horror --exclude content-warning:gore
-cargo run -p quill -- tags list --namespace genre
+cargo run -p plait -- prompt list --include genre:horror --exclude content-warning:gore
+cargo run -p plait -- tags list --namespace genre
 
 # Make an account a server administrator, then work the report inbox and tags.
 # (On the board: the Reports and Server settings links.)
-QUILL_DATABASE_URL=... cargo run -p quill-server -- make-admin yourname
+QUILL_DATABASE_URL=... cargo run -p plait-server -- make-admin yourname
 # Reserved handles (admin, support, the server's name, your own list) only come from the server:
-QUILL_DATABASE_URL=... cargo run -p quill-server -- grant-handle yourname support "Support desk"
-cargo run -p quill -- admin reports
-cargo run -p quill -- account notices        # what administrators did to your prompts and tags
+QUILL_DATABASE_URL=... cargo run -p plait-server -- grant-handle yourname support "Support desk"
+cargo run -p plait -- admin reports
+cargo run -p plait -- account notices        # what administrators did to your prompts and tags
 
 # The CLI keeps its login and keys in an encrypted local store (keychain or passphrase).
-cargo run -p quill -- store status
+cargo run -p plait -- store status
 # Keys for a persona (needed for writing sessions), and checking anyone's.
-cargo run -p quill -- keys init --as your_handle      # also publishes KeyPackages
-cargo run -p quill -- keys status --as your_handle    # KeyPackages waiting; `keys publish` tops up
-cargo run -p quill -- keys show some_handle
-cargo run -p quill -- device list --as your_handle
+cargo run -p plait -- keys init --as your_handle      # also publishes KeyPackages
+cargo run -p plait -- keys status --as your_handle    # KeyPackages waiting; `keys publish` tops up
+cargo run -p plait -- keys show some_handle
+cargo run -p plait -- device list --as your_handle
 # A second computer: link it from one you already use (compare the words both show).
-cargo run -p quill -- device link                 # on the new computer
-cargo run -p quill -- device approve 'quill-link:1:...'   # on the one in use
-cargo run -p quill -- devices                     # this login's devices
-cargo run -p quill -- admin namespace-set genre --required true   # every prompt needs a genre
-cargo run -p quill -- admin tags --namespace theme                  # tags with usage counts
-cargo run -p quill -- admin settings --new-tags approval            # writers' new tags need approval
-cargo run -p quill -- admin tags --status pending                   # tag requests
-cargo run -p quill -- admin namespace-set genre --color '#dbeafe' --text-color '#1e3a8a'
-cargo run -p quill -- admin tag-color genre:horror --color '#7f1d1d'   # text colour automatic
+cargo run -p plait -- device link                 # on the new computer
+cargo run -p plait -- device approve 'quill-link:1:...'   # on the one in use
+cargo run -p plait -- devices                     # this login's devices
+cargo run -p plait -- admin namespace-set genre --required true   # every prompt needs a genre
+cargo run -p plait -- admin tags --namespace theme                  # tags with usage counts
+cargo run -p plait -- admin settings --new-tags approval            # writers' new tags need approval
+cargo run -p plait -- admin tags --status pending                   # tag requests
+cargo run -p plait -- admin namespace-set genre --color '#dbeafe' --text-color '#1e3a8a'
+cargo run -p plait -- admin tag-color genre:horror --color '#7f1d1d'   # text colour automatic
 ```
 
 Server configuration (environment variables):

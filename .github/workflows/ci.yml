@@ -85,18 +85,18 @@ jobs:
           persist-credentials: false
       - run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: cargo clippy -p quill-core -p quill -p quill-ui -p quill-gui
+      - name: cargo clippy -p plait-core -p plait -p plait-ui -p plait-gui
         shell: bash
         env:
           CARGO_TERM_COLOR: never
         run: |
           set -o pipefail
-          cargo clippy --locked -p quill-core -p quill -p quill-ui -p quill-gui --all-targets -- -D warnings 2>&1 | tee clippy.log || {
+          cargo clippy --locked -p plait-core -p plait -p plait-ui -p plait-gui --all-targets -- -D warnings 2>&1 | tee clippy.log || {
             grep -E -A6 "^(error|warning)" clippy.log | head -60 | tr '\n' ' ' | sed 's/^/::error::/'
             echo
             exit 1
           }
-      - name: cargo test -p quill-core
+      - name: cargo test -p plait-core
         shell: bash
         env:
           CARGO_TERM_COLOR: never
@@ -104,7 +104,7 @@ jobs:
         # downloading the log.
         run: |
           set -o pipefail
-          cargo test --locked -p quill-core 2>&1 | tee test.log || {
+          cargo test --locked -p plait-core 2>&1 | tee test.log || {
             grep -E "panicked at|^test .* FAILED|^---- " test.log | head -20 | sed 's/^/::error::/'
             exit 1
           }

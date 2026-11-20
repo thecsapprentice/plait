@@ -1,6 +1,6 @@
 # Error codes
 
-Generated from `quill_proto::codes`; don't edit by hand (`QUILL_WRITE_CODES=1 cargo test -p quill-proto codes`).
+Generated from `plait_proto::codes`; don't edit by hand (`QUILL_WRITE_CODES=1 cargo test -p plait-proto codes`).
 
 Every problem Quill can show has a code, `Q-AACC`: `AA` is the area and `CC` the case. In each area, 01–49 are refusals by the server and 50–99 are decided by the client. The desktop app shows codes in advanced mode; the CLI always prints them. A code never changes meaning, and a retired code is never reused.
 

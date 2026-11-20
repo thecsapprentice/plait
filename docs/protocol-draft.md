@@ -520,7 +520,7 @@ As built in 2m, each is in the repository and checked in CI against the code:
 
 ### OpenAPI file
 
-- Generated from code with `utoipa` from the axum handlers and `quill-proto` types; the generated file is committed and CI fails on unreviewed changes.
+- Generated from code with `utoipa` from the axum handlers and `plait-proto` types; the generated file is committed and CI fails on unreviewed changes.
 
 - Covers every `/api/v1` endpoint and schema, bearer auth, RFC 9457 errors with the `409`, `413` and `429` cases, per-endpoint size limits, cursor paging, and the Server-Sent Events payload types.
 

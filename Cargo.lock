@@ -5754,15 +5754,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
-name = "quill"
+name = "plait"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "quill-certs",
- "quill-core",
- "quill-e2e",
- "quill-proto",
+ "plait-certs",
+ "plait-core",
+ "plait-e2e",
+ "plait-proto",
  "rpassword",
  "serde",
  "serde_json",
@@ -5774,24 +5774,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-board-ui"
+name = "plait-board-ui"
 version = "0.1.0"
 dependencies = [
  "dioxus",
  "dioxus-ssr",
- "quill-proto",
+ "plait-proto",
  "time",
  "url",
  "uuid",
 ]
 
 [[package]]
-name = "quill-certs"
+name = "plait-certs"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "hex",
- "quill-certs",
+ "plait-certs",
  "serde_json",
  "sha2 0.11.1",
  "thiserror 2.0.21",
@@ -5799,7 +5799,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-core"
+name = "plait-core"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
@@ -5817,9 +5817,9 @@ dependencies = [
  "openmls",
  "openmls_rust_crypto",
  "openmls_traits",
- "quill-certs",
- "quill-mls-envelope",
- "quill-proto",
+ "plait-certs",
+ "plait-mls-envelope",
+ "plait-proto",
  "redb",
  "reqwest",
  "ruzstd",
@@ -5839,20 +5839,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-devtools"
+name = "plait-devtools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "quill-proto",
- "quill-server",
+ "plait-proto",
+ "plait-server",
  "sqlx",
  "tokio",
  "uuid",
 ]
 
 [[package]]
-name = "quill-e2e"
+name = "plait-e2e"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5860,12 +5860,12 @@ dependencies = [
  "boon",
  "clap",
  "ed25519-dalek",
- "quill-certs",
- "quill-core",
- "quill-gui",
- "quill-proto",
- "quill-server",
- "quill-ui",
+ "plait-certs",
+ "plait-core",
+ "plait-gui",
+ "plait-proto",
+ "plait-server",
+ "plait-ui",
  "reqwest",
  "serde_json",
  "sqlx",
@@ -5877,17 +5877,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-gui"
+name = "plait-gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "dioxus",
  "dioxus-desktop",
  "directories",
- "quill-certs",
- "quill-core",
- "quill-proto",
- "quill-ui",
+ "plait-certs",
+ "plait-core",
+ "plait-proto",
+ "plait-ui",
  "serde",
  "serde_json",
  "tempfile",
@@ -5899,7 +5899,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-mls-envelope"
+name = "plait-mls-envelope"
 version = "0.1.0"
 dependencies = [
  "thiserror 2.0.21",
@@ -5907,7 +5907,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-proto"
+name = "plait-proto"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
@@ -5921,7 +5921,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-server"
+name = "plait-server"
 version = "0.1.0"
 dependencies = [
  "aho-corasick",
@@ -5934,10 +5934,10 @@ dependencies = [
  "getrandom 0.4.3",
  "linkify",
  "pulldown-cmark",
- "quill-board-ui",
- "quill-certs",
- "quill-mls-envelope",
- "quill-proto",
+ "plait-board-ui",
+ "plait-certs",
+ "plait-mls-envelope",
+ "plait-proto",
  "regex",
  "rhai",
  "serde",
@@ -5962,7 +5962,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quill-ui"
+name = "plait-ui"
 version = "0.1.0"
 dependencies = [
  "dioxus",
@@ -5971,9 +5971,9 @@ dependencies = [
  "dioxus-ssr",
  "pulldown-cmark",
  "qrcode",
- "quill-board-ui",
- "quill-proto",
- "quill-ui",
+ "plait-board-ui",
+ "plait-proto",
+ "plait-ui",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

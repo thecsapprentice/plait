@@ -24,14 +24,14 @@ panic = "warn"
 
 [workspace.dependencies]
 # Workspace crates
-quill-proto = { path = "crates/quill-proto" }
-quill-mls-envelope = { path = "crates/quill-mls-envelope" }
-quill-core = { path = "crates/quill-core" }
-quill-server = { path = "crates/quill-server" }
-quill-board-ui = { path = "crates/quill-board-ui" }
-quill-certs = { path = "crates/quill-certs" }
-quill-ui = { path = "crates/quill-ui" }
-quill-gui = { path = "crates/quill-gui", default-features = false }
+plait-proto = { path = "crates/plait-proto" }
+plait-mls-envelope = { path = "crates/plait-mls-envelope" }
+plait-core = { path = "crates/plait-core" }
+plait-server = { path = "crates/plait-server" }
+plait-board-ui = { path = "crates/plait-board-ui" }
+plait-certs = { path = "crates/plait-certs" }
+plait-ui = { path = "crates/plait-ui" }
+plait-gui = { path = "crates/plait-gui", default-features = false }
 
 # Shared third-party dependencies
 anyhow = "1"
@@ -59,11 +59,11 @@ directories = "6"
 futures-util = { version = "0.3", default-features = false }
 getrandom = "0.4"
 hkdf = "0.13"
-# MLS (quill-core only; banned from the server's tree).
+# MLS (plait-core only; banned from the server's tree).
 openmls = "0.9.2"
 openmls_rust_crypto = "0.6"
 openmls_traits = "0.6"
-# Client local store (quill-core only).
+# Client local store (plait-core only).
 redb = "4.4"
 keyring-core = "1"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
@@ -96,7 +96,7 @@ unicode-security = "0.1"
 unicode-segmentation = "1"
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
-# The OpenAPI file (2m): the server and quill-proto's `openapi` feature.
+# The OpenAPI file (2m): the server and plait-proto's `openapi` feature.
 utoipa = { version = "6", default-features = false, features = ["macros", "uuid", "time"] }
 utoipa-axum = "0.3"
 zeroize = { version = "1", features = ["derive", "serde"] }

@@ -7,11 +7,11 @@ private keys.
 
 Two tests keep this honest:
 
-- **The plaintext-canary test** (`crates/quill-e2e/tests/gate.rs`) puts a
+- **The plaintext-canary test** (`crates/plait-e2e/tests/gate.rs`) puts a
   random canary in everything a writer can write, then searches dumps of
   every table and the server's logs for it, and for every secret the
   clients hold.
-- **The audit test** (`crates/quill-e2e/tests/audit.rs`) reads the schema
+- **The audit test** (`crates/plait-e2e/tests/audit.rs`) reads the schema
   after every migration and fails if a column isn't listed here, or is
   listed here but gone. A migration that adds a column must add it here,
   with its class and a reason.

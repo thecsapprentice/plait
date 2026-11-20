@@ -54,7 +54,7 @@ One Rust server binary with three internal services (client API, MLS delivery se
 ```mermaid
 flowchart LR
   subgraph devices["Writer's devices: CLI, desktop, web"]
-    D["<b>quill-core</b><br/>OpenMLS state per device<br/>identity + device keys<br/>encrypted local store"]
+    D["<b>plait-core</b><br/>OpenMLS state per device<br/>identity + device keys<br/>encrypted local store"]
   end
   subgraph home["Home server (Rust, axum)"]
     API["<b>Client API + board UI</b><br/>sessions, SSE, SSR prompt board"]
@@ -84,16 +84,16 @@ Sessions between servers flow client → home delivery service → federation �
 
 | Crate | Kind | Responsibility |
 | --- | --- | --- |
-| `quill-proto` | lib | AS2 / JSON-LD types, `wr:` and `mls:` extension types, API request/response types, shared validation. No crypto. |
-| `quill-mls-envelope` | lib | Parses MLS framing headers (group ID, epoch, content type) without any decryption capability. Used by the server. |
-| `quill-server` | bin | axum app: API, delivery service, federation, jobs. Depends on `quill-proto` and `quill-mls-envelope` only. |
-| `quill-core` | lib | Client logic: OpenMLS groups, key store, HLC ordering, safety numbers, API client. |
-| `quill` | bin | CLI test client on `quill-core`. |
-| `quill-e2e` | test | Multi-instance and malicious-server scenarios. |
+| `plait-proto` | lib | AS2 / JSON-LD types, `wr:` and `mls:` extension types, API request/response types, shared validation. No crypto. |
+| `plait-mls-envelope` | lib | Parses MLS framing headers (group ID, epoch, content type) without any decryption capability. Used by the server. |
+| `plait-server` | bin | axum app: API, delivery service, federation, jobs. Depends on `plait-proto` and `plait-mls-envelope` only. |
+| `plait-core` | lib | Client logic: OpenMLS groups, key store, HLC ordering, safety numbers, API client. |
+| `quill` | bin | CLI test client on `plait-core`. |
+| `plait-e2e` | test | Multi-instance and malicious-server scenarios. |
 
-The dependency graph itself is a security control: `cargo-deny` bans `openmls_rust_crypto` and any HPKE crate from `quill-server`'s tree, so a decryption path cannot be added by accident.
+The dependency graph itself is a security control: `cargo-deny` bans `openmls_rust_crypto` and any HPKE crate from `plait-server`'s tree, so a decryption path cannot be added by accident.
 
-The server also links `quill-board-ui` to render its public prompt browser (see Future clients). That crate depends only on `quill-proto`, so the ban still holds.
+The server also links `plait-board-ui` to render its public prompt browser (see Future clients). That crate depends only on `plait-proto`, so the ban still holds.
 
 ### Core server tables
 
@@ -158,7 +158,7 @@ Prompt bodies are written in Markdown (decided Phase 1). The server renders them
 
 ### Automated moderation
 
-Administrators can write scripts that check what writers post before it's saved (#43). The code is in `quill-server`'s `moderation` module; the scripting reference for admins is [automod.md](automod.md).
+Administrators can write scripts that check what writers post before it's saved (#43). The code is in `plait-server`'s `moderation` module; the scripting reference for admins is [automod.md](automod.md).
 
 - **Only public board content reaches scripts.** Hooks sit in the board's write paths: a prompt posted or edited, a comment on an announcement, a new tag, a writer's report. Session content never exists in plaintext on the server, so no hook could see it. Scripts are never given a login name, a reporter's identity or anything from a session, which keeps "moderation without prying".
 - **Scripts act only through the server.** A script returns `reject`, `flag` or `dismiss`; the server carries it out through the same reports, inbox, admin log and account notices as an administrator's own action. A script can't write anything, call out, or keep state between runs.
@@ -223,7 +223,7 @@ The web board fits the screen it's on (#51); the mockups and the review behind t
 
 - **Three widths.** Phones (under 47.5rem) get one column and a tab bar fixed to the bottom; tablets a top bar and one column; wide screens (75rem and up) put panes side by side. The admin sidebar sits beside the page from 64rem and becomes a strip of links that scrolls sideways below that.
 - **One nav.** The header's nav is the desktop top bar and, restyled, the phone's tab bar: links marked `tab` show there (Board, Post, Mine, Notices, More) with a short label and an icon, the rest only on wide screens and on the More page. Rendering two navs would mean two sets of counts and links to keep in step.
-- **Each page picks a layout** (`Layout` in `quill-board-ui`): one reading column for forms and single prompts, the full width for pages with panes, or the admin sidebar.
+- **Each page picks a layout** (`Layout` in `plait-board-ui`): one reading column for forms and single prompts, the full width for pages with panes, or the admin sidebar.
 - **The reading pane without JavaScript.** Opening a prompt from the board's list links to the same board URL plus `open=<id>`; the server renders the list and that prompt together. Wide screens show both; narrower ones hide the list while a prompt is open and show a link back. A prompt rated above the visitor's cap isn't opened in the pane: its own page asks first. Admin reports and tags use the same pattern (`open=`) for the chosen row's panel.
 - **The filter builder is one GET form** at `/filters`. Hidden fields carry the filter so far; the tags on screen have Any / Has / Hide radios and are named in a `shown` field; type, letter and page are submit buttons. On every request the server drops what the hidden fields said about the shown tags and applies their radios, so switching type or page never loses a choice, and only tags the page showed can be set. Show prompts redirects to the board with the usual `include`, `exclude`, `maturity`, `state` and `q`. Tag counts come from one query per page over the `tag_ids` GIN index.
 - **The filter summary** above the list shows a few tags of each kind and "+N", and never grows, so a long filter can't push the list off the screen.
@@ -231,7 +231,7 @@ The web board fits the screen it's on (#51); the mockups and the review behind t
 
 ### Server rules
 
-Administrators keep one Markdown page of server rules (#42), read at `/rules` and `GET /rules` by anyone. The code is `quill-server`'s `rules` module.
+Administrators keep one Markdown page of server rules (#42), read at `/rules` and `GET /rules` by anyone. The code is `plait-server`'s `rules` module.
 
 - **Storage.** A `server_pages` row named `rules`, kept apart from `server_settings` because it's a document, not a switch, and so an "about" page can follow without a migration. It's rendered with the prompt sanitizer, so the admin's `#` becomes the page's first section heading (`h3`).
 - **Versions, not history.** Every save gets the next version. The admin log records each save with the version and a SHA-256 of the text, which is an accountable record of who changed the rules and when without keeping every version's text (decided 2026-10-26; revisit if admins ask to see old versions).
@@ -523,14 +523,14 @@ Accepted trade-off: a server-delivered web client can be subverted by an operato
 2. **Integrity checks.** Subresource Integrity on every script, and the .wasm module fetched with fetch()'s integrity option before instantiation; the release manifest signs the hashes of the .wasm, the wasm-bindgen glue and the loader. Reproducible wasm builds need a pinned toolchain (rust-toolchain.toml), the exact wasm-bindgen CLI version matching the crate, a pinned wasm-opt, path remapping, and a containerized build; a tiny bootstrap page whose hash is published; an optional verifier browser extension (like WhatsApp Web's Code Verify) that checks served code against the manifest.
 3. **Independent hosting.** The same static bundle can be loaded from a project-controlled origin or self-hosted, and pointed at any server's API, so users need not trust their server for code.
 4. **Origin isolation.** The key-holding client runs on its own origin, separate from the API and from any federated prompt content. Strict Content Security Policy: no inline script, no `eval` (only `wasm-unsafe-eval`), `connect-src` limited to the API origin. Trusted Types on; decrypted HTML sanitized and rendered in a sandboxed frame.
-5. **Rust end to end.** The web client, including its UI (e.g. Leptos or Dioxus), is written in Rust and compiled to WebAssembly, sharing `quill-core` with the CLI. JavaScript is limited to the `wasm-bindgen` glue and a small loader; no protocol logic is reimplemented. The web build uses the RustCrypto provider (aws-lc-rs does not target the browser), `getrandom`'s browser backend, and a browser implementation of `quill-core`'s storage interface (IndexedDB, or redb's page layer over the browser's file storage) in place of the native file.
+5. **Rust end to end.** The web client, including its UI (e.g. Leptos or Dioxus), is written in Rust and compiled to WebAssembly, sharing `plait-core` with the CLI. JavaScript is limited to the `wasm-bindgen` glue and a small loader; no protocol logic is reimplemented. The web build uses the RustCrypto provider (aws-lc-rs does not target the browser), `getrandom`'s browser backend, and a browser implementation of `plait-core`'s storage interface (IndexedDB, or redb's page layer over the browser's file storage) in place of the native file.
 6. **Key storage.** MLS state in IndexedDB, wrapped by a non-extractable WebCrypto key, optionally unlocked by passphrase (Argon2id in WebAssembly). Request persistent storage so the browser is less likely to evict it.
 7. **Update pinning.** A service worker that keeps the installed version and asks the user before switching to a new one. Browsers still re-check the service-worker script itself, so this narrows the window rather than closing it.
 8. **Honest UI.** A clear notice that the web client is weaker against a malicious operator than the CLI or a native app; the same safety-number verification; a warning that clearing site data deletes sessions. High-risk users are pointed to the CLI or native apps.
 
 ## Minimal test client
 
-Ship a CLI client, `quill`, built on a reusable `quill-core` library crate, so the same code drives manual testing, scripted end-to-end tests, and any later GUI. It holds all keys; the server crate never links it.
+Ship a CLI client, `quill`, built on a reusable `plait-core` library crate, so the same code drives manual testing, scripted end-to-end tests, and any later GUI. It holds all keys; the server crate never links it.
 
 ### Commands (each exercises a server feature)
 
@@ -552,12 +552,12 @@ Ship a CLI client, `quill`, built on a reusable `quill-core` library crate, so t
 ### Test harness
 
 - `docker compose` with two server instances (`alpha.test`, `beta.test`), Postgres for each, and a local CA so TLS is real.
-- Scripted scenarios using `quill-core` directly: same-server session, cross-server session, both users sending while offline, concurrent commits, a deleted prompt mid-session, device key change triggering the TOFU warning.
+- Scripted scenarios using `plait-core` directly: same-server session, cross-server session, both users sending while offline, concurrent commits, a deleted prompt mid-session, device key change triggering the TOFU warning.
 - A **malicious-server test mode**: a feature-flagged server build that substitutes KeyPackages, drops messages, and reorders commits. The suite passes only if the client detects every one.
 
 ## Future clients: GUI framework options
 
-Recommendation: use **Dioxus** for every UI surface — the server's public prompt browser, `quill-gui` and the web client — with shared components rendered server-side on the board, natively on desktop, and as WebAssembly in the browser; keep **Leptos + Tauri 2** as the fallback. Because the prompt browser ships with the server, the framework choice is made **now, in Phase 1**, not at the start of the GUI phase. Implementation order otherwise stays: server and CLI (including the prompt browser), then `quill-gui`, then the web client.
+Recommendation: use **Dioxus** for every UI surface — the server's public prompt browser, `plait-gui` and the web client — with shared components rendered server-side on the board, natively on desktop, and as WebAssembly in the browser; keep **Leptos + Tauri 2** as the fallback. Because the prompt browser ships with the server, the framework choice is made **now, in Phase 1**, not at the start of the GUI phase. Implementation order otherwise stays: server and CLI (including the prompt browser), then `plait-gui`, then the web client.
 
 ### What matters for this app
 
@@ -581,13 +581,13 @@ Recommendation: use **Dioxus** for every UI surface — the server's public prom
 ### Why Dioxus first
 
 - **Same components everywhere.** One `rsx!` component crate targets the desktop webview renderer and the web (wasm) renderer, which directly serves "GUI mirrored to the web client".
-- **Better key isolation on desktop.** Dioxus desktop runs the app logic, including `quill-core`, as native Rust and only sends DOM updates to the webview. Keys and decryption never enter webview JavaScript. With Leptos + Tauri, the Leptos code runs as wasm *inside* the webview, so crypto would either live there too or move to Tauri commands, splitting desktop and web code paths.
-- **Native-only advantages stay available on desktop:** the OS keychain and aws-lc-rs, while the web build swaps in IndexedDB and RustCrypto behind `quill-core`'s traits.
+- **Better key isolation on desktop.** Dioxus desktop runs the app logic, including `plait-core`, as native Rust and only sends DOM updates to the webview. Keys and decryption never enter webview JavaScript. With Leptos + Tauri, the Leptos code runs as wasm *inside* the webview, so crypto would either live there too or move to Tauri commands, splitting desktop and web code paths.
+- **Native-only advantages stay available on desktop:** the OS keychain and aws-lc-rs, while the web build swaps in IndexedDB and RustCrypto behind `plait-core`'s traits.
 - **Modern look via plain CSS:** Tailwind works, and Dioxus Primitives provides accessible Radix-style components.
 
 ### Risks and fallback
 
-- **Churn.** Dioxus is pre-1.0 and 0.8 is still in alpha. Pin exact versions, keep UI components thin, and keep all logic in `quill-core` so a framework switch only rewrites views.
+- **Churn.** Dioxus is pre-1.0 and 0.8 is still in alpha. Pin exact versions, keep UI components thin, and keep all logic in `plait-core` so a framework switch only rewrites views.
 - **Fallback: Leptos + Tauri 2.** Choose it if Dioxus stalls or desktop webview issues appear. Leptos is more web-focused and Tauri is the more established desktop shell. Put crypto in the Tauri Rust backend behind narrow commands, and use Tauri's capability allowlist to expose nothing else.
 - **Watch, don't adopt yet:** Dioxus Native (Blitz, a GPU HTML/CSS renderer without a webview) could remove the webview dependency later.
 - **Not recommended:** Slint, Iced and egui have attractive native looks, but their canvas-based web output loses spellcheck, IME and screen-reader quality, which matters most for a writing app.
@@ -599,15 +599,15 @@ Anyone visiting the server in a plain browser sees the prompt board, rendered by
 - **Server-side rendering on axum.** Dioxus fullstack renders HTML inside the existing axum server. Search and tag filters are ordinary `GET` forms with query parameters, so the board works with JavaScript disabled (Tor Browser's safest mode); hydration only adds conveniences such as tag autocomplete.
 - **Scope.** Browse, search, filter and read prompts, plus links to the federated board. Signed-in users can also post, edit and withdraw prompts and manage personas here, using the same posting components as the clients (see below). Anything needing keys (requesting or joining a session) hands off to a client via a `quill://` link or copyable prompt URL.
 - **Separate origin from any key-holding client.** The board lives on the main domain; the future web client must live on its own origin (e.g. `app.` subdomain), as the web-client requirements already demand. Board pages must never load the client bundle.
-- **Crate split keeps the server crypto-free.** Board components live in `quill-board-ui`, which depends only on `quill-proto`. Session and editor components live in `quill-ui` and depend on `quill-core`. The server links `quill-board-ui` only, and the existing `cargo-deny` ban on MLS crypto crates in the server tree enforces it.
+- **Crate split keeps the server crypto-free.** Board components live in `plait-board-ui`, which depends only on `plait-proto`. Session and editor components live in `plait-ui` and depend on `plait-core`. The server links `plait-board-ui` only, and the existing `cargo-deny` ban on MLS crypto crates in the server tree enforces it.
 - **Sanitized output.** Remote prompt HTML is already sanitized on ingest; the board adds a strict CSP, no third-party assets, and no inline scripts.
-- **Consistency.** Clients reuse `quill-board-ui` for their own board views, so the board looks identical everywhere.
+- **Consistency.** Clients reuse `plait-board-ui` for their own board views, so the board looks identical everywhere.
 
 #### Prompt posting, shared by board and clients
 
-Posting is part of `quill-board-ui`, so the server's board and every client use the same forms. Only the transport underneath differs.
+Posting is part of `plait-board-ui`, so the server's board and every client use the same forms. Only the transport underneath differs.
 
-- **One component, two backends.** Posting components call a small `BoardBackend` trait (list, search, post, edit, withdraw, list personas). On the server it is implemented as Dioxus server functions over the existing database layer; in clients it is implemented by `quill-core`'s API client. Validation (tag normalization, maturity rules, size limits) lives in `quill-proto`, so both paths enforce identical rules.
+- **One component, two backends.** Posting components call a small `BoardBackend` trait (list, search, post, edit, withdraw, list personas). On the server it is implemented as Dioxus server functions over the existing database layer; in clients it is implemented by `plait-core`'s API client. Validation (tag normalization, maturity rules, size limits) lives in `plait-proto`, so both paths enforce identical rules.
 - **Works without JavaScript.** Post and edit are standard HTML forms that `POST` to the server and re-render, so Tor Browser's safest mode still works.
 - **Browser sign-in.** Username and password (Argon2id, as for the API); session cookie `HttpOnly`, `Secure`, `SameSite=Strict`, scoped to the board origin; a CSRF token in every form; login and posting rate limits. No email, phone or third-party sign-in.
 - **Personas.** The persona picker, including "new persona for this prompt", is available on the board as well as in clients.
@@ -798,7 +798,7 @@ the page can reset them; to check again in Edge.
 
 #### In the app (3f-2)
 
-The editor as built in `quill-ui` (3f-2), checked on **Linux: WebKitGTK 2.52
+The editor as built in `plait-ui` (3f-2), checked on **Linux: WebKitGTK 2.52
 under Xvfb with software rendering**, 2026-11-19, against a seeded dev
 server:
 
@@ -844,7 +844,7 @@ what. The rows still empty are tracked in #105.
 
 ### How the desktop app is built (3b)
 
-- **Three layers.** `quill-gui`'s `NativeBackend` does the work: stores, the keychain, and `quill-core` on its own Tokio runtime, so the window never waits on it. `quill-ui` holds the views and an app model. The two meet only at the `Backend` trait, whose errors are already in plain words (`Problem`); raw errors show only in advanced mode. The web client will supply its own `Backend`.
+- **Three layers.** `plait-gui`'s `NativeBackend` does the work: stores, the keychain, and `plait-core` on its own Tokio runtime, so the window never waits on it. `plait-ui` holds the views and an app model. The two meet only at the `Backend` trait, whose errors are already in plain words (`Problem`); raw errors show only in advanced mode. The web client will supply its own `Backend`.
 - **The model moves on results, not awaits.** A view makes a backend call and hands the result to a `Model` method, which decides the next screen (first run, unlock, keys elsewhere, the frame). The end-to-end tests drive the same methods against a real server. A result for a server no longer in view is dropped, so switching quickly never shows stale data.
 - **One store per server, kept open for the session.** Each server's store lives in the GUI's own folder, apart from the CLI's, because two programs on one store would fight over its file lock. A store unlocked once stays open until the app closes, so switching back is instant even with a passphrase. Opening a server shows the frame at once and fills it in when the server answers.
 - **Offline is a state, not an error.** The frame stays up with what's known. The status line says the server can't be reached and offers Try now, while upkeep retries with backoff (5 seconds, doubling to 2 minutes). Upkeep otherwise runs on start, every 5 minutes, and on each live notice from `GET /events`.
@@ -873,8 +873,8 @@ what. The rows still empty are tracked in #105.
 
 `scripts/dev-gui.py` opens its windows full of requests and sessions, so screens can be judged with a realistic amount on them.
 
-- **Why it isn't in `quill-seed`.** The board seed writes to the database. Requests and sessions are end-to-end encrypted, and a session's keys live only on its writers' devices, so the server can't be seeded with them. `quill-seed-sessions` (in `quill-e2e`, since it needs both quill-core and the app's backend, and must stay out of the Docker image) signs in as the demo writers and acts everything out against the running server.
-- **Finding the writers.** `quill-seed` picks demo logins at random, and the API has no way to list accounts. `quill-seed --cast` prints `QUILL_CAST login handle…` lines, which the script captures and passes on.
+- **Why it isn't in `plait-seed`.** The board seed writes to the database. Requests and sessions are end-to-end encrypted, and a session's keys live only on its writers' devices, so the server can't be seeded with them. `plait-seed-sessions` (in `plait-e2e`, since it needs both plait-core and the app's backend, and must stay out of the Docker image) signs in as the demo writers and acts everything out against the running server.
+- **Finding the writers.** `plait-seed` picks demo logins at random, and the API has no way to list accounts. `plait-seed --cast` prints `QUILL_CAST login handle…` lines, which the script captures and passes on.
 - **The windows.** Each window's writer gets a store made by the app's own backend (adding the server, signing in, preparing every persona), so it's exactly what the app would make. The seeder then reopens that store to act. It uses the OS keychain like the app, or a printed passphrase where there's none. The other writers' devices are in memory and gone when it finishes.
 - **What's acted out.** For each window's writer: requests they sent that are waiting, accepted, declined and withdrawn; requests to them that are waiting, accepted and declined. Sessions: a long one with every channel, a named channel, an answer, an edit and a deletion, read up to its last two story notes; one never opened; one the other writer left. With two windows, they share a session and each has a request from the other to answer live.
 - **Dates.** Everything happens as the seeder runs, so requests and notes are all dated now. Spreading them out would mean rewriting times on the server and inside encrypted notes, which isn't worth it for a dev tool.
@@ -899,7 +899,7 @@ what. The rows still empty are tracked in #105.
 - **Typing does as little as it can.** The draft is saved, and the preview caught up, every 300 ms rather than per key (finding 5), and once more when the editor goes (the window closing, another channel).
 - **Shortcuts remount the text area.** Ctrl+B and Ctrl+I read the selection with a small script, wrap it, and remount the text area with the new text. The caret and selection return from the new text area's mount event; a script run straight after remounting found the old one.
 - **Spellcheck stays on; writing suggestions stay off.** The text areas set `spellcheck`, `writingsuggestions="false"` and `autocomplete="off"` (findings 6 and 9). WebKitGTK's own switch is set at the app's root.
-- **Drafts and the outbox live in the store, beside the history.** `quill-core`'s `drafts` keeps a draft per session and channel, with the note it answers, and a queue of notes to send (`0x07` and `0x08` keys in the messages table). Both stay on the device and are encrypted at rest with everything else.
+- **Drafts and the outbox live in the store, beside the history.** `plait-core`'s `drafts` keeps a draft per session and channel, with the note it answers, and a queue of notes to send (`0x07` and `0x08` keys in the messages table). Both stay on the device and are encrypted at rest with everything else.
 - **Every note goes through the outbox.** Send queues the note, then sends everything waiting in that session in order. So a note written offline is never overtaken by a later one. `flush` stops at the first note the server can't take yet (`CoreError::temporary`: unreachable, or 502 to 504), or that it refused. A refused note keeps its place, marked with why, until it's changed (which clears the mark) or withdrawn. The sessions with notes waiting are listed in the meta table, so upkeep's `flush_all` needn't search them all.
 - **Offline, the page keeps what it read.** Reading a session needs the server. When a re-read can't reach it, the page keeps the last read and says so, so writing goes on. Drafts and waiting notes are read from the store alone (`Backend::drafted`, `Backend::waiting`), so they show offline too. The page re-reads the session only when the session list loads, not on every change to the model; that also keeps a stale re-read from overtaking a send.
 - **A lost connection is noticed soon.** Upkeep waits up to five minutes for the next live notice. When the live connection fails (the server went down), the wait is cut to a few seconds, backing off up to two minutes, so notes waiting go soon after the server is back. The backoff also covers a server without live notices.
@@ -919,7 +919,7 @@ what. The rows still empty are tracked in #105.
 
 ### Error codes (#76)
 
-Every problem the server or a client can show has a stable code, `Q-AACC`: `AA` the area (10 connection, 30 requests, 90 input checks and so on), `CC` the case. A number is faster to report and to search for than a sentence, and it stays the same when the wording changes. The registry is `quill_proto::codes`, and `docs/error-codes.md` is generated from it and checked by a test, as `docs/openapi.json` is.
+Every problem the server or a client can show has a stable code, `Q-AACC`: `AA` the area (10 connection, 30 requests, 90 input checks and so on), `CC` the case. A number is faster to report and to search for than a sentence, and it stays the same when the wording changes. The registry is `plait_proto::codes`, and `docs/error-codes.md` is generated from it and checked by a test, as `docs/openapi.json` is.
 
 - **Who decides, by range.** In each area, 01–49 are the server's refusals and 50–99 are what a client decides (it couldn't reach the server, this computer's store refused, a check on received keys failed). So a code says where to look as well as what happened.
 - **One code per case.** The server sets the code at each place it refuses something, and sends it as a `code` member of its problem+json reply. The same case in several places shares a code. Input checks (`ValidationError`) carry one code per kind, the same from the server and a client.
@@ -933,13 +933,13 @@ Bugs found by hand in 3b were all in how screens react to clicks and typing: wor
 
 | Layer | Where | What it drives |
 | --- | --- | --- |
-| Model | `quill-ui/src/model.rs` tests | The model's transitions, one backend result at a time |
-| Views | `quill-ui/src/view_tests.rs` | Static HTML: labels, roles, input hints, no ids outside advanced mode |
-| Interactions | `quill-ui/tests/` (`flows.rs`, `board.rs`, `mine.rs`, `devices.rs`) | The whole app, clicked and typed by label, against `testing::Sim` |
-| Interactions, real | `quill-e2e/tests/gui_flows.rs` | The same driver on the native backend against a real server |
+| Model | `plait-ui/src/model.rs` tests | The model's transitions, one backend result at a time |
+| Views | `plait-ui/src/view_tests.rs` | Static HTML: labels, roles, input hints, no ids outside advanced mode |
+| Interactions | `plait-ui/tests/` (`flows.rs`, `board.rs`, `mine.rs`, `devices.rs`) | The whole app, clicked and typed by label, against `testing::Sim` |
+| Interactions, real | `plait-e2e/tests/gui_flows.rs` | The same driver on the native backend against a real server |
 
-- **The driver (`quill_ui::testing::Driver`)** runs the app headless. It finds buttons by their accessible name (`aria-label`, else text), as a screen reader would. Its document is built from the same mutations the webview applies, and events enter as the webview's JSON, through dioxus-desktop's own path. So handlers, tasks and the model run as they do in the window. A disabled button can't be clicked, and a failed wait prints what the window shows.
-- **The simulated server (`testing::Sim`)** keeps state like the real one: logins, personas and keys, rules with versions and acceptance settings, closed registration, outages and passphrase stores. Since 3c it also runs the board by the server's rules: tag types with limits and policies, 15 tags a prompt, pages of 20, search, removal, reports and notices. Since 3d it keeps each login's device group and waiting links. It also acts as the writer's other devices: approving this computer (or not, to test mismatched words), waiting to be approved, and removing this computer, which the app learns at upkeep as with quill-core. Tests change it mid-flow. The real-server interaction tests check that it stays faithful for the paths that matter most.
+- **The driver (`plait_ui::testing::Driver`)** runs the app headless. It finds buttons by their accessible name (`aria-label`, else text), as a screen reader would. Its document is built from the same mutations the webview applies, and events enter as the webview's JSON, through dioxus-desktop's own path. So handlers, tasks and the model run as they do in the window. A disabled button can't be clicked, and a failed wait prints what the window shows.
+- **The simulated server (`testing::Sim`)** keeps state like the real one: logins, personas and keys, rules with versions and acceptance settings, closed registration, outages and passphrase stores. Since 3c it also runs the board by the server's rules: tag types with limits and policies, 15 tags a prompt, pages of 20, search, removal, reports and notices. Since 3d it keeps each login's device group and waiting links. It also acts as the writer's other devices: approving this computer (or not, to test mismatched words), waiting to be approved, and removing this computer, which the app learns at upkeep as with plait-core. Tests change it mid-flow. The real-server interaction tests check that it stays faithful for the paths that matter most.
 - **What the driver can't see:** the webview itself (focus, input methods, rendering, platform quirks). Those stay hand checks; `scripts/dev-gui.py` sets up a seeded server and a fresh GUI for them.
 - **Every bug found by hand gets an interaction test** that fails before the fix.
 
@@ -947,7 +947,7 @@ Bugs found by hand in 3b were all in how screens react to clicks and typing: wor
 
 The server is trusted to run the board but not to read sessions. In the desktop app, the webview shows decrypted session text, and script in that page can read it and send events to the app. So the client never puts server-made HTML or script into the page, even HTML the server says it sanitized:
 
-- **Markdown is rendered by the client, as elements.** The server rules (#42), and later prompts, announcements and notes, arrive as Markdown. `quill-ui`'s `markdown` module parses them with `pulldown-cmark` and builds Dioxus elements directly. Nothing is ever an HTML string, so there's no `dangerous_inner_html` to get wrong. Raw HTML in the source is shown as text. The server's `bodyHtml` fields are ignored.
+- **Markdown is rendered by the client, as elements.** The server rules (#42), and later prompts, announcements and notes, arrive as Markdown. `plait-ui`'s `markdown` module parses them with `pulldown-cmark` and builds Dioxus elements directly. Nothing is ever an HTML string, so there's no `dangerous_inner_html` to get wrong. Raw HTML in the source is shown as text. The server's `bodyHtml` fields are ignored.
 - **Links open only for `https`, `http` and `mailto`.** Anything else (`javascript:`, `file:`, app-internal schemes) is shown as plain text.
 - **Headings sit under the page.** Markdown `#` becomes `h3`, as on the board, so a page's own headings stay above the server's text.
 
@@ -957,10 +957,10 @@ A hostile or compromised server can still say misleading things in its text, but
 
 | Crate | Role | Built in |
 | --- | --- | --- |
-| `quill-board-ui` | Prompt board components (list, filters, prompt view, tags, prompt posting and editing, persona picker); depends only on `quill-proto` | Phase 1 |
-| `quill-ui` | The client's views and app state; reaches `quill-core` only through its `Backend` trait, so the web client can supply its own | GUI phase (3b) |
-| `quill-gui` | Desktop binary and the native `Backend`: `quill-ui` + native `quill-core` (encrypted stores, keychain) | GUI phase (3b) |
-| `quill-web` | Wasm entry point: both UI crates + web `quill-core` (IndexedDB, RustCrypto) | Web-client phase |
+| `plait-board-ui` | Prompt board components (list, filters, prompt view, tags, prompt posting and editing, persona picker); depends only on `plait-proto` | Phase 1 |
+| `plait-ui` | The client's views and app state; reaches `plait-core` only through its `Backend` trait, so the web client can supply its own | GUI phase (3b) |
+| `plait-gui` | Desktop binary and the native `Backend`: `plait-ui` + native `plait-core` (encrypted stores, keychain) | GUI phase (3b) |
+| `quill-web` | Wasm entry point: both UI crates + web `plait-core` (IndexedDB, RustCrypto) | Web-client phase |
 
 Phase 1 builds the board on Dioxus fullstack, which validates the SSR path early. A one-week spike at the start of the GUI phase should then build the session view (channels, long-form editor, image attachment) in Dioxus on both targets and test IME, spellcheck and screen-reader behavior before committing.
 
@@ -971,14 +971,14 @@ Build single-server encryption before federation, so the hardest property (serve
 ```mermaid
 flowchart TD
   P0["<b>Phase 0 · Foundations</b><br/>workspace, CI with cargo-deny / audit / vet, protocol spec,<br/>Postgres schema, accounts and personas, quill CLI skeleton"]
-  P1["<b>Phase 1 · Prompt board</b><br/>prompts, tag policies, filters, full-text search, prompt-to-session rules,<br/>SSR board (quill-board-ui): sign-in, posting, personas, reports, admin inbox"]
+  P1["<b>Phase 1 · Prompt board</b><br/>prompts, tag policies, filters, full-text search, prompt-to-session rules,<br/>SSR board (plait-board-ui): sign-in, posting, personas, reports, admin inbox"]
   P2["<b>Phase 2 · Encrypted sessions on one server</b><br/>encrypted local store, identity keys per persona, device certificates, linking, backup; KeyPackages, Welcome flow;<br/>channels, attachments, limits, epoch sequencer, HLC ordering, SSE, safety numbers"]
-  P3["<b>Phase 3 · Desktop GUI</b><br/>quill-gui on Dioxus desktop, shared quill-ui, native key storage"]
+  P3["<b>Phase 3 · Desktop GUI</b><br/>plait-gui on Dioxus desktop, shared plait-ui, native key storage"]
   P4["<b>Phase 4 · Web client</b><br/>quill-web: Rust to WebAssembly on its own origin, verifiable builds"]
   P5["<b>Phase 5 · Federation</b><br/>actors, HTTP Signatures, board follows, cross-server sessions<br/>sequenced by the prompt author's server, two-instance harness"]
   P6["<b>Phase 6 · Hardening and review</b><br/>malicious-server suite, parser fuzzing, external review,<br/>operations runbook, disclosure policy, Tor onion service"]
 
-  P0 -->|"CI green; spec reviewed; no MLS crypto in quill-server"| P1
+  P0 -->|"CI green; spec reviewed; no MLS crypto in plait-server"| P1
   P1 -->|"filter tests pass; board works without JavaScript"| P2
   P2 -->|"DB dump holds no plaintext or private keys;<br/>uncertified devices rejected"| P3
   P3 -->|"GUI reaches feature parity with the CLI"| P4
@@ -996,7 +996,7 @@ Each phase is split into sub-phases, one pull request each, tracked in the [road
 - **Unit and property tests** (`proptest`) for tag normalization, filter queries, HLC ordering and envelope parsing.
 - **Fuzzing** (`cargo-fuzz`) of every parser that sees untrusted input: AS2 JSON, HTTP signature headers, MLS framing.
 - **Plaintext-canary test.** Clients send messages containing a random canary string; CI greps the full Postgres dump, server logs and federation queue for it and fails on any hit.
-- **Interop.** Run against OpenMLS's own test vectors via `quill-core`, and federate prompts with a real Mastodon instance in the harness.
+- **Interop.** Run against OpenMLS's own test vectors via `plait-core`, and federate prompts with a real Mastodon instance in the harness.
 - **Adversarial suite** from the malicious-server build (KeyPackage substitution, dropped and reordered messages) must be detected by the client every time.
 
 ## Decisions and open risks

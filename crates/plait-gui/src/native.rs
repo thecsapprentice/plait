@@ -1,0 +1,2347 @@
+//! The native [`Backend`]: one encrypted store per server, the OS keychain,
+//! and `plait-core` doing the work on a background runtime so the window
+//! never waits on it.
+
+use std::{
+    collections::HashMap,
+    future::Future,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
+};
+
+use plait_certs::RevocationReason;
+use plait_core::{
+    Client, CoreError, Store, StoreError, devices, drafts, history,
+    hlc::Hlc,
+    keys, requests, sessions,
+    store::{KdfParams, KeySetup, KeySource, Unlock, vault::Vault},
+};
+use plait_proto::{
+    api::{CreatePersona, Credentials, Persona, Registration, UpdatePersona},
+    board::UpdateAccountSettings,
+};
+use plait_ui::backend::{
+    AccountNotice, AccountSettings, CreatePrompt, CreateReport, Prompt, PromptPage, PromptQuery,
+    Tag, TagNamespace, TagPage, TagPageQuery, TagPolicy, TagQuery, UpdatePrompt,
+};
+use plait_ui::backend::{
+    AppSettings, Backend, BoardSettings, Call, Details, Keys, PASSPHRASE_MIN_CHARS, PersonaState,
+    Problem, Protection, ServerEntry, ServerInfo, ServerRules, Standing, Step, Theme,
+};
+use plait_ui::backend::{Approval, Device, LinkStart, PersonaKeys, RemoveReason, codes};
+use plait_ui::backend::{
+    ChannelView, Inbox, IncomingRequest, KeyChange, Note, SentRequest, SessionStanding,
+    SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
+};
+use plait_ui::backend::{
+    Draft, ErrorCode, NoteVersion, QueuedNote, SafetyNumbers, Sending, Verification,
+};
+use tokio::runtime::Handle;
+use uuid::Uuid;
+
+use crate::settings::{self, Paths, Server, Settings};
+
+/// How many upkeep results advanced mode keeps.
+const UPKEEP_LOG: usize = 20;
+
+/// The server open now.
+#[derive(Clone)]
+struct Open {
+    id: Uuid,
+    name: String,
+    store: Arc<Store>,
+    /// Signed in when the store holds a token.
+    client: Client,
+    /// Held while working on the login's device group: two tasks doing so
+    /// at once (upkeep and approving, say) would send with the same keys.
+    group: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Open {
+    /// Waits for this server's device group to be free (see `group`).
+    async fn exclusive(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.group.clone().lock_owned().await
+    }
+}
+
+/// A server whose store waits for its passphrase.
+#[derive(Clone)]
+struct Locked {
+    id: Uuid,
+    path: PathBuf,
+}
+
+pub struct NativeBackend {
+    paths: Paths,
+    /// `None` where the OS has no usable keychain: stores then need a
+    /// passphrase.
+    vault: Option<Arc<dyn Vault>>,
+    runtime: Handle,
+    settings: Mutex<Settings>,
+    open: Mutex<Option<Open>>,
+    /// Every store unlocked this session, kept open so switching back to
+    /// its server is instant (no passphrase or keychain prompt again).
+    unlocked: Mutex<HashMap<Uuid, Open>>,
+    locked: Mutex<Option<Locked>>,
+    upkeep_log: Mutex<Vec<String>>,
+    /// The link this computer opened, waiting for an answer.
+    link: Mutex<Option<String>>,
+    /// This computer's offset from UTC, read at start (`with_utc_offset`).
+    offset: time::UtcOffset,
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    // A panic elsewhere mustn't take the whole app down with it.
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// How long a link lasts (the server's mailbox).
+const LINK_SECS: u64 = 10 * 60;
+/// How long one look for a link's answer waits before saying "not yet".
+const ANSWER_WAIT_SECS: u64 = 3;
+
+/// A core message as a sentence: capitalised, with a full stop.
+fn sentence(e: &CoreError) -> String {
+    let text = e.to_string();
+    let mut chars = text.chars();
+    let mut out: String = chars
+        .next()
+        .map(|c| c.to_uppercase().chain(chars).collect())
+        .unwrap_or_default();
+    if !out.ends_with('.') {
+        out.push('.');
+    }
+    out
+}
+
+/// The computer's own name, as the system knows it, if it says.
+fn computer_name() -> Option<String> {
+    let from_env = ["COMPUTERNAME", "HOSTNAME"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok());
+    let found = from_env.or_else(|| std::fs::read_to_string("/etc/hostname").ok());
+    // macOS keeps it elsewhere; `scutil` would need a process, so it's skipped.
+    found
+        .map(|n| {
+            n.trim()
+                .chars()
+                .take(plait_ui::backend::DEVICE_NAME_MAX)
+                .collect::<String>()
+        })
+        .filter(|n| !n.is_empty())
+}
+
+/// A persona device's certificate check, in words.
+fn device_status(s: &keys::DeviceStatus) -> String {
+    match s {
+        keys::DeviceStatus::Valid { limited: false } => "certified".into(),
+        keys::DeviceStatus::Valid { limited: true } => "certified, limited".into(),
+        keys::DeviceStatus::Superseded => "certified by an older identity key".into(),
+        keys::DeviceStatus::Revoked(r) => format!("revoked ({})", r.as_str()),
+        keys::DeviceStatus::Invalid(why) => format!("fails its check: {why}"),
+    }
+}
+
+fn failed(detail: impl std::fmt::Display) -> Problem {
+    Problem::Failed {
+        code: codes::UNCLASSIFIED,
+        detail: detail.to_string(),
+    }
+}
+
+/// `plait-core`'s errors in the writer's words. `server` names the server
+/// for "can't reach".
+fn problem(server: &str, e: CoreError) -> Problem {
+    match &e {
+        CoreError::Http(h) if h.is_connect() || h.is_timeout() || h.is_request() => {
+            Problem::Unreachable(server.to_owned())
+        }
+        CoreError::NotLoggedIn => Problem::SignedOut,
+        CoreError::KeyChanged { handle } => Problem::KeyChanged(handle.clone()),
+        CoreError::Api(p) if p.status == 401 => Problem::SignedOut,
+        CoreError::Api(p) if p.status == 409 => Problem::Taken(e.code()),
+        CoreError::Api(p) if p.status == 404 || p.status == 410 => Problem::Gone,
+        CoreError::Api(p) if p.kind.ends_with("/rules-not-accepted") => Problem::RulesNotAccepted(
+            e.code(),
+            p.detail
+                .clone()
+                .unwrap_or_else(|| "Read and accept the server rules to continue.".into()),
+        ),
+        CoreError::Api(p) if (400..500).contains(&p.status) => Problem::Refused(
+            e.code(),
+            p.detail.clone().unwrap_or_else(|| p.title.clone()),
+        ),
+        CoreError::Url(_) | CoreError::InsecureUrl => Problem::refused(
+            codes::BAD_ADDRESS,
+            "That isn't a server address. It looks like writers.example or https://writers.example.",
+        ),
+        _ => Problem::Failed {
+            code: e.code(),
+            detail: e.to_string(),
+        },
+    }
+}
+
+/// A request's errors: a 409 says what's in the way in the server's words
+/// (one already waiting, already a session), and core's own refusals (the
+/// author has no devices) are said as they are.
+fn request_problem(server: &str, e: CoreError) -> Problem {
+    match &e {
+        CoreError::Api(p) if p.status == 409 => Problem::Refused(
+            e.code(),
+            p.detail.clone().unwrap_or_else(|| p.title.clone()),
+        ),
+        CoreError::Keys(c, m) if *c == codes::AUTHOR_HAS_NO_DEVICES => {
+            Problem::Refused(*c, format!("{m}. Try again later."))
+        }
+        CoreError::Keys(c, m) if *c == codes::PITCH_TOO_LONG || *c == codes::PITCH_EMPTY => {
+            Problem::Refused(*c, m.clone())
+        }
+        _ => problem(server, e),
+    }
+}
+
+/// Prompt titles for sessions, fetched once each; `None` once deleted.
+#[derive(Default)]
+struct Titles(HashMap<Uuid, Option<String>>);
+
+impl Titles {
+    async fn of(
+        &mut self,
+        client: &Client,
+        prompt: Option<Uuid>,
+    ) -> Result<Option<(Uuid, String)>, CoreError> {
+        let Some(id) = prompt else {
+            return Ok(None);
+        };
+        if let Some(t) = self.0.get(&id) {
+            return Ok(t.clone().map(|t| (id, t)));
+        }
+        let title = match client.prompt(id).await {
+            Ok(p) => Some(p.title),
+            Err(e) if matches!(e.status(), Some(404 | 410)) => None,
+            Err(e) => return Err(e),
+        };
+        self.0.insert(id, title.clone());
+        Ok(title.map(|t| (id, t)))
+    }
+}
+
+/// When a note was written, from its hybrid clock.
+fn note_time(hlc: &str) -> Option<time::OffsetDateTime> {
+    let h: Hlc = hlc.parse().ok()?;
+    time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(h.ms) * 1_000_000).ok()
+}
+
+fn writer(m: &plait_proto::sessions::SessionMember) -> Writer {
+    Writer {
+        handle: m.handle.clone(),
+        display_name: m.display_name.clone(),
+    }
+}
+
+/// The writer behind a note's sender, by the session's members (or the
+/// handle core names when they've left).
+fn writer_of(s: &plait_proto::sessions::Session, uri: &str) -> Writer {
+    s.members
+        .iter()
+        .find(|m| m.actor_uri == uri)
+        .map(writer)
+        .unwrap_or_else(|| Writer {
+            handle: sessions::sender_name(s, uri),
+            display_name: None,
+        })
+}
+
+fn standing(s: sessions::Standing) -> SessionStanding {
+    match s {
+        sessions::Standing::Joined => SessionStanding::Joined,
+        sessions::Standing::Waiting => SessionStanding::Waiting,
+        sessions::Standing::NoKeys => SessionStanding::NoKeys,
+        sessions::Standing::Rejoining => SessionStanding::Rejoining,
+        sessions::Standing::Broken(detail) => SessionStanding::Broken {
+            code: codes::SESSION_CHECK_FAILED,
+            detail,
+        },
+    }
+}
+
+fn channel_view(c: &history::ChannelInfo) -> ChannelView {
+    ChannelView {
+        name: c.name.clone(),
+        summary: c.summary.clone(),
+        notes: c.notes,
+        unseen: c.unseen,
+    }
+}
+
+fn queued_note(q: drafts::Queued) -> QueuedNote {
+    QueuedNote {
+        id: q.id,
+        channel: q.channel,
+        text: q.text,
+        reply_to: q.reply_to,
+        refused: q.refused.map(|r| (ErrorCode(r.code), r.detail)),
+    }
+}
+
+/// What became of note `mine` (if any) after a flush: it went, it waits,
+/// or the server refused it or a note ahead of it.
+fn sending(done: &drafts::Flushed, waiting: &[drafts::Queued], mine: Option<Uuid>) -> Sending {
+    if let Some(id) = done.refused
+        && mine.is_none_or(|m| m == id)
+        && let Some(r) = waiting
+            .iter()
+            .find(|q| q.id == id)
+            .and_then(|q| q.refused.clone())
+    {
+        return Sending::Refused(ErrorCode(r.code), r.detail);
+    }
+    let went = mine.is_none_or(|m| done.sent.iter().any(|(id, _)| *id == m));
+    if went && !done.offline && done.refused.is_none() {
+        Sending::Sent
+    } else {
+        Sending::Waiting
+    }
+}
+
+fn session_gid(id: &str) -> Result<Vec<u8>, Problem> {
+    plait_proto::keys::unb64(id).ok_or_else(|| failed("bad session id"))
+}
+
+fn summary(
+    s: &plait_proto::sessions::Session,
+    standing: SessionStanding,
+    prompt: Option<(Uuid, String)>,
+    channels: &[history::ChannelInfo],
+    latest: Option<time::OffsetDateTime>,
+    opened: bool,
+) -> SessionSummary {
+    let me = s.members.iter().find(|m| m.persona.is_some());
+    SessionSummary {
+        id: s.id.clone(),
+        me: me.map(writer).unwrap_or(Writer {
+            handle: String::new(),
+            display_name: None,
+        }),
+        partner: s.members.iter().find(|m| m.persona.is_none()).map(writer),
+        prompt,
+        standing,
+        ended: s.ended,
+        notes: channels.iter().map(|c| c.notes).sum(),
+        unseen: channels.iter().map(|c| c.unseen).sum(),
+        latest,
+        opened,
+    }
+}
+
+/// Whether a typed address without a scheme names this computer.
+fn is_local(address: &str) -> bool {
+    let host = match address.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => address.split([':', '/']).next().unwrap_or(""),
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "::1")
+}
+
+/// A typed address as a URL, `https://` assumed when there's no scheme.
+fn normalize(address: &str) -> Result<String, Problem> {
+    let trimmed = address.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(Problem::refused(
+            codes::BAD_ADDRESS,
+            "Type the server's address.",
+        ));
+    }
+    let with_scheme = if trimmed.contains("://") {
+        trimmed.to_owned()
+    } else if is_local(trimmed) {
+        // A server on this computer (development) has no certificate.
+        format!("http://{trimmed}")
+    } else {
+        format!("https://{trimmed}")
+    };
+    let url =
+        plait_core::client::check_server_url(&with_scheme).map_err(|e| problem(trimmed, e))?;
+    Ok(url.as_str().trim_end_matches('/').to_owned())
+}
+
+/// Checks a new store passphrase against the CLI's rule.
+fn check_passphrase(p: &str) -> Result<(), Problem> {
+    if p.chars().count() < PASSPHRASE_MIN_CHARS {
+        return Err(Problem::refused(
+            codes::PASSPHRASE_TOO_SHORT,
+            format!("Use at least {PASSPHRASE_MIN_CHARS} characters."),
+        ));
+    }
+    Ok(())
+}
+
+/// A store still in use somewhere (a call in flight) can't be changed.
+fn busy() -> Problem {
+    Problem::refused(
+        codes::STORE_BUSY,
+        "Quill is still using this server's store. Try again in a moment.",
+    )
+}
+
+fn entry(s: &Server) -> ServerEntry {
+    ServerEntry {
+        id: s.id,
+        address: s.address.clone(),
+        name: s.name.clone(),
+        login: s.login.clone(),
+    }
+}
+
+impl NativeBackend {
+    /// `vault` is the OS keychain in the app, a memory vault in tests.
+    /// Shows times at `offset` from UTC. Read it before any threads start:
+    /// on Unix, the `time` crate only reads the local offset then.
+    pub fn with_utc_offset(mut self, offset: time::UtcOffset) -> Self {
+        self.offset = offset;
+        self
+    }
+
+    pub fn new(
+        paths: Paths,
+        vault: Option<Arc<dyn Vault>>,
+        runtime: Handle,
+    ) -> anyhow::Result<Self> {
+        let settings = Settings::load(&paths.settings)?;
+        Ok(Self {
+            paths,
+            vault,
+            runtime,
+            settings: Mutex::new(settings),
+            open: Mutex::new(None),
+            unlocked: Mutex::new(HashMap::new()),
+            locked: Mutex::new(None),
+            upkeep_log: Mutex::new(Vec::new()),
+            link: Mutex::new(None),
+            offset: time::UtcOffset::UTC,
+        })
+    }
+
+    fn stores_folder(&self) -> PathBuf {
+        lock(&self.settings)
+            .stores_folder
+            .clone()
+            .unwrap_or_else(|| self.paths.default_stores.clone())
+    }
+
+    fn store_path(&self, id: Uuid) -> PathBuf {
+        self.stores_folder().join(format!("{id}.quill"))
+    }
+
+    fn save_settings(&self) -> Result<(), Problem> {
+        let s = lock(&self.settings).clone();
+        s.save(&self.paths.settings).map_err(failed)
+    }
+
+    fn opened(&self) -> Result<Open, Problem> {
+        lock(&self.open)
+            .clone()
+            .ok_or_else(|| failed("no server is open"))
+    }
+
+    /// Runs a call on the open server's client, on the background runtime,
+    /// with its errors in the writer's words.
+    fn call<'a, T, F, Fut>(&'a self, work: F) -> Call<'a, T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, CoreError>> + Send + 'static,
+    {
+        let open = self.opened();
+        Box::pin(async move {
+            let open = open?;
+            let name = open.name.clone();
+            self.run(async move { work(open.client).await.map_err(|e| problem(&name, e)) })
+                .await
+        })
+    }
+
+    /// Runs `work` on the background runtime.
+    fn run<'a, T: Send + 'static>(
+        &'a self,
+        work: impl Future<Output = Result<T, Problem>> + Send + 'static,
+    ) -> impl Future<Output = Result<T, Problem>> + 'a {
+        let handle = self.runtime.spawn(work);
+        async move { handle.await.map_err(failed)? }
+    }
+
+    /// Opens the store at `path` and makes it the open server.
+    fn adopt(&self, id: Uuid, store: Store) -> Result<Open, Problem> {
+        let (name, address) = {
+            let s = lock(&self.settings);
+            let server = s.server(id).ok_or_else(|| failed("unknown server"))?;
+            (server.name.clone(), server.address.clone())
+        };
+        let mut client = Client::new(&address).map_err(|e| problem(&name, e))?;
+        if let Some(token) = store.token().map_err(failed)? {
+            client = client.with_token(token.as_str());
+        }
+        let open = Open {
+            id,
+            name,
+            store: Arc::new(store),
+            client,
+            group: Arc::default(),
+        };
+        *lock(&self.open) = Some(open.clone());
+        lock(&self.unlocked).insert(id, open.clone());
+        *lock(&self.locked) = None;
+        lock(&self.settings).current = Some(id);
+        self.save_settings()?;
+        Ok(open)
+    }
+
+    /// Replaces the open server's client (after signing in or out).
+    fn set_client(&self, client: Client) {
+        if let Some(open) = lock(&self.open).as_mut() {
+            open.client = client.clone();
+            if let Some(kept) = lock(&self.unlocked).get_mut(&open.id) {
+                kept.client = client;
+            }
+        }
+    }
+
+    fn set_login(&self, id: Uuid, login: Option<String>) -> Result<(), Problem> {
+        if let Some(s) = lock(&self.settings).server_mut(id) {
+            s.login = login;
+        }
+        self.save_settings()
+    }
+}
+
+/// Where the open server's login stands, from the server and the store.
+async fn standing_of(open: Open) -> Result<Standing, Problem> {
+    let p = |e| problem(&open.name, e);
+    if open.store.token().map_err(failed)?.is_none() {
+        return Ok(Standing::SignedOut);
+    }
+    let personas = match open.client.personas().await {
+        Ok(list) => list,
+        Err(e) if e.status() == Some(401) => return Ok(Standing::SignedOut),
+        Err(e) => return Err(p(e)),
+    };
+    let mut states = Vec::with_capacity(personas.len());
+    for persona in personas {
+        let keys = persona_keys(&open, &persona).await?;
+        states.push(PersonaState { persona, keys });
+    }
+    Ok(Standing::SignedIn {
+        login: String::new(),
+        personas: states,
+    })
+}
+
+async fn persona_keys(open: &Open, persona: &Persona) -> Result<Keys, Problem> {
+    let p = |e| problem(&open.name, e);
+    let identity = keys::load_identity(&open.store, persona.id).map_err(p)?;
+    let device = keys::load_device(&open.store, persona.id)
+        .map_err(p)?
+        .and_then(|d| d.id);
+    if identity.is_some() && device.is_some() {
+        return Ok(Keys::Ready);
+    }
+    let published = open.client.persona_keys(persona.id).await.map_err(p)?;
+    Ok(match (identity, published.identity_key) {
+        // Made somewhere else: this computer must be linked to it.
+        (None, Some(_)) => Keys::Elsewhere,
+        _ => Keys::ToSetUp,
+    })
+}
+
+impl NativeBackend {
+    /// [`standing_of`], with the login name the settings remember.
+    fn standing_now(&self) -> impl Future<Output = Result<Standing, Problem>> + '_ {
+        let open = self.opened();
+        async move {
+            let open = open?;
+            let id = open.id;
+            let mut standing = self.run(standing_of(open)).await?;
+            if let Standing::SignedIn { login, .. } = &mut standing {
+                *login = lock(&self.settings)
+                    .server(id)
+                    .and_then(|s| s.login.clone())
+                    .unwrap_or_default();
+            }
+            Ok(standing)
+        }
+    }
+
+    /// Signs in with `token` and records the login.
+    async fn signed_in(&self, login: &str, token: String) -> Result<Standing, Problem> {
+        let open = self.opened()?;
+        open.store.set_token(Some(&token)).map_err(failed)?;
+        self.set_client(open.client.clone().with_token(token));
+        self.set_login(open.id, Some(login.trim().to_ascii_lowercase()))?;
+        self.standing_now().await
+    }
+}
+
+fn create_store(
+    path: &Path,
+    vault: Option<&dyn Vault>,
+    passphrase: Option<&str>,
+) -> Result<Store, Problem> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(failed)?;
+    }
+    match (passphrase, vault) {
+        (Some(p), _) => Store::create(
+            path,
+            KeySetup::Passphrase {
+                passphrase: p,
+                kdf: KdfParams::DEFAULT,
+            },
+        )
+        .map_err(failed),
+        (None, Some(v)) => match Store::create(path, KeySetup::Keychain(v)) {
+            Ok(s) => Ok(s),
+            Err(StoreError::Keychain(_)) => Err(Problem::NeedsPassphrase),
+            Err(e) => Err(failed(e)),
+        },
+        (None, None) => Err(Problem::NeedsPassphrase),
+    }
+}
+
+impl NativeBackend {
+    /// Gets a persona ready on this computer; `replace` makes a new
+    /// identity key in place of one made on another device.
+    fn prepare_with<'a>(
+        &'a self,
+        persona: Uuid,
+        progress: &'a dyn Fn(Step),
+        replace: bool,
+    ) -> Call<'a, ()> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let o = open.clone();
+            let found = self
+                .run(async move {
+                    let list = o.client.personas().await.map_err(|e| problem(&o.name, e))?;
+                    Ok(list.into_iter().find(|p| p.id == persona))
+                })
+                .await?
+                .ok_or_else(|| Problem::refused(codes::PERSONA_GONE, "That persona is gone."))?;
+            progress(Step::IdentityKey);
+            let (o, p) = (open.clone(), found.clone());
+            self.run(async move {
+                keys::init(&o.store, &o.client, &p, replace)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| match e {
+                        // Made on another device: linking is the way (3d).
+                        CoreError::Keys(..) => Problem::refused(
+                            codes::KEYS_ELSEWHERE,
+                            "This persona's keys are on another of your devices. Link this computer to it, or restore a backup.",
+                        ),
+                        e => problem(&o.name, e),
+                    })
+            })
+            .await?;
+            progress(Step::ThisComputer);
+            let o = open.clone();
+            self.run(async move {
+                let _group = o.exclusive().await;
+                devices::announce(&o.store, &o.client)
+                    .await
+                    .map_err(|e| problem(&o.name, e))
+            })
+            .await?;
+            progress(Step::KeyPackages);
+            let o = open;
+            self.run(async move {
+                keys::publish(&o.store, &o.client, &found, keys::POOL_TARGET)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| problem(&o.name, e))
+            })
+            .await
+        })
+    }
+
+    /// Runs `work` with the open server's store and client, off the window's thread.
+    /// As `call_with_store`, with a request's errors (`request_problem`).
+    fn call_request<'a, T, F, Fut>(&'a self, work: F) -> Call<'a, T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Arc<Store>, Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, CoreError>> + Send + 'static,
+    {
+        let open = self.opened();
+        Box::pin(async move {
+            let open = open?;
+            let name = open.name.clone();
+            self.run(async move {
+                // Requests join, add to and drop MLS groups: one at a time
+                // with upkeep and sessions, as all such work is.
+                let _group = open.exclusive().await;
+                work(open.store.clone(), open.client.clone())
+                    .await
+                    .map_err(|e| request_problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    /// Like `call_with_store`, one at a time with the server's other MLS
+    /// work (`Open::exclusive`).
+    fn call_locked<'a, T, F, Fut>(&'a self, work: F) -> Call<'a, T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Arc<Store>, Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, CoreError>> + Send + 'static,
+    {
+        let open = self.opened();
+        Box::pin(async move {
+            let open = open?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                work(open.store.clone(), open.client.clone())
+                    .await
+                    .map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn call_with_store<'a, T, F, Fut>(&'a self, work: F) -> Call<'a, T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Arc<Store>, Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, CoreError>> + Send + 'static,
+    {
+        let open = self.opened();
+        Box::pin(async move {
+            let open = open?;
+            let name = open.name.clone();
+            self.run(async move {
+                work(open.store, open.client)
+                    .await
+                    .map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+}
+
+fn safety(n: sessions::SafetyNumbers) -> SafetyNumbers {
+    SafetyNumbers {
+        identity: n.identity.into_iter().map(str::to_owned).collect(),
+        check: n.check.into_iter().map(str::to_owned).collect(),
+        verified: n.verified,
+    }
+}
+
+/// Whether this device verified the session's other writer, and if so
+/// whether their published key is still the one pinned. Only a verified
+/// writer's key is fetched, so reading an unverified session costs nothing.
+async fn verification(
+    store: &Store,
+    client: &Client,
+    s: &plait_proto::sessions::Session,
+) -> Result<Verification, CoreError> {
+    if !sessions::verified(store, s)? {
+        return Ok(Verification::Unverified);
+    }
+    let Some(partner) = s.members.iter().find(|m| m.persona.is_none()) else {
+        return Ok(Verification::Verified);
+    };
+    let published = keys::check_published(
+        &client.actor_keys(&partner.handle).await?,
+        &partner.actor_uri,
+        keys::now_ms(),
+    )?;
+    let changed = match published.identity {
+        Some((key, version)) => matches!(
+            keys::check_pin(store, &partner.actor_uri, &key, version)?,
+            keys::PinStatus::Changed { .. }
+        ),
+        None => false,
+    };
+    Ok(if changed {
+        Verification::KeyChanged
+    } else {
+        Verification::Verified
+    })
+}
+
+impl Backend for NativeBackend {
+    fn servers(&self) -> Vec<ServerEntry> {
+        lock(&self.settings).servers.iter().map(entry).collect()
+    }
+
+    fn current(&self) -> Option<Uuid> {
+        lock(&self.settings).current
+    }
+
+    fn check_server<'a>(&'a self, address: &'a str) -> Call<'a, ServerInfo> {
+        Box::pin(async move {
+            let address = normalize(address)?;
+            let shown = address.clone();
+            let info = self
+                .run(async move {
+                    let client = Client::new(&address).map_err(|e| problem(&address, e))?;
+                    let info = client.instance().await.map_err(|e| problem(&address, e))?;
+                    Ok(ServerInfo {
+                        address,
+                        domain: info.domain,
+                        registration_open: info.registration_open,
+                        has_rules: info.rules_updated_at.is_some(),
+                        rules_to_accept: info.rules_updated_at.is_some()
+                            && (info.rules_acceptance.on_join()
+                                || info.rules_acceptance.on_change()),
+                        software: info.software,
+                        version: info.software_version,
+                    })
+                })
+                .await;
+            // A wrong address and an offline server look alike from here.
+            info.map_err(|e| match e {
+                Problem::Unreachable(_) | Problem::Failed { .. } => Problem::Unreachable(shown),
+                other => other,
+            })
+        })
+    }
+
+    fn add_server<'a>(
+        &'a self,
+        address: &'a str,
+        passphrase: Option<&'a str>,
+    ) -> Call<'a, ServerEntry> {
+        Box::pin(async move {
+            let info = self.check_server(address).await?;
+            if lock(&self.settings)
+                .servers
+                .iter()
+                .any(|s| s.address == info.address)
+            {
+                return Err(Problem::refused(
+                    codes::SERVER_ALREADY_ADDED,
+                    format!("{} is already in your list of servers.", info.domain),
+                ));
+            }
+            if let Some(p) = passphrase {
+                check_passphrase(p)?;
+            }
+            let id = Uuid::new_v4();
+            let path = self.store_path(id);
+            let store = create_store(&path, self.vault.as_deref(), passphrase)?;
+            store.set_server(&info.address).map_err(failed)?;
+            let server = Server {
+                id,
+                address: info.address,
+                name: info.domain,
+                login: None,
+            };
+            lock(&self.settings).servers.push(server.clone());
+            self.adopt(id, store)?;
+            Ok(entry(&server))
+        })
+    }
+
+    fn open_server(&self, id: Uuid) -> Call<'_, Standing> {
+        Box::pin(async move {
+            if lock(&self.open).as_ref().is_some_and(|o| o.id == id) {
+                return self.standing_now().await;
+            }
+            let kept = lock(&self.unlocked).get(&id).cloned();
+            if let Some(open) = kept {
+                *lock(&self.open) = Some(open);
+                *lock(&self.locked) = None;
+                lock(&self.settings).current = Some(id);
+                self.save_settings()?;
+                return self.standing_now().await;
+            }
+            let path = self.store_path(id);
+            if !path.exists() {
+                return Err(failed(format!("no store at {}", path.display())));
+            }
+            match Store::key_source(&path).map_err(failed)? {
+                KeySource::Keychain => {
+                    let vault = self.vault.clone().ok_or(Problem::NeedsPassphrase)?;
+                    let store = self
+                        .run(async move {
+                            Store::open(&path, Unlock::Keychain(vault.as_ref())).map_err(failed)
+                        })
+                        .await?;
+                    self.adopt(id, store)?;
+                    self.standing_now().await
+                }
+                KeySource::Passphrase => {
+                    *lock(&self.open) = None;
+                    *lock(&self.locked) = Some(Locked { id, path });
+                    lock(&self.settings).current = Some(id);
+                    self.save_settings()?;
+                    Ok(Standing::Locked)
+                }
+            }
+        })
+    }
+
+    fn unlock<'a>(&'a self, passphrase: &'a str) -> Call<'a, Standing> {
+        Box::pin(async move {
+            let locked = lock(&self.locked)
+                .clone()
+                .ok_or_else(|| failed("no store is waiting to be unlocked"))?;
+            let passphrase = passphrase.to_owned();
+            let path = locked.path.clone();
+            let store = self
+                .run(async move {
+                    Store::open(&path, Unlock::Passphrase(&passphrase)).map_err(|e| match e {
+                        StoreError::WrongKey => {
+                            Problem::refused(codes::WRONG_PASSPHRASE, "That isn't the passphrase.")
+                        }
+                        e => failed(e),
+                    })
+                })
+                .await?;
+            self.adopt(locked.id, store)?;
+            self.standing_now().await
+        })
+    }
+
+    fn remove_server(&self, id: Uuid) -> Call<'_, ()> {
+        Box::pin(async move {
+            if lock(&self.open).as_ref().is_some_and(|o| o.id == id) {
+                *lock(&self.open) = None;
+            }
+            lock(&self.unlocked).remove(&id);
+            if lock(&self.locked).as_ref().is_some_and(|l| l.id == id) {
+                *lock(&self.locked) = None;
+            }
+            let path = self.store_path(id);
+            let vault = self.vault.clone();
+            self.run(async move {
+                Store::destroy(&path, vault.as_deref()).map_err(|e| match e {
+                    StoreError::InUse => busy(),
+                    e => failed(e),
+                })
+            })
+            .await?;
+            {
+                let mut s = lock(&self.settings);
+                s.servers.retain(|s| s.id != id);
+                if s.current == Some(id) {
+                    s.current = None;
+                }
+            }
+            self.save_settings()
+        })
+    }
+
+    fn rename_server(&self, id: Uuid, name: &str) -> Result<(), Problem> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 60 {
+            return Err(Problem::refused(
+                codes::SERVER_NAME_BAD,
+                "Use 1 to 60 characters.",
+            ));
+        }
+        lock(&self.settings)
+            .server_mut(id)
+            .ok_or_else(|| failed("unknown server"))?
+            .name = name.to_owned();
+        if let Some(open) = lock(&self.open).as_mut().filter(|o| o.id == id) {
+            open.name = name.to_owned();
+        }
+        if let Some(kept) = lock(&self.unlocked).get_mut(&id) {
+            kept.name = name.to_owned();
+        }
+        self.save_settings()
+    }
+
+    fn keychain_available(&self) -> bool {
+        self.vault.is_some()
+    }
+
+    fn protection(&self) -> Option<Protection> {
+        let open = lock(&self.open).clone()?;
+        match open.store.status().ok()?.key_source? {
+            KeySource::Keychain => Some(Protection::Keychain),
+            KeySource::Passphrase => Some(Protection::Passphrase),
+        }
+    }
+
+    fn set_protection<'a>(&'a self, passphrase: Option<&'a str>) -> Call<'a, ()> {
+        Box::pin(async move {
+            if let Some(p) = passphrase {
+                check_passphrase(p)?;
+            } else if self.vault.is_none() {
+                return Err(Problem::NeedsPassphrase);
+            }
+            // Changing the key needs the only handle on the store.
+            let open = lock(&self.open)
+                .take()
+                .ok_or_else(|| failed("no server is open"))?;
+            lock(&self.unlocked).remove(&open.id);
+            let Open {
+                id,
+                name,
+                store,
+                client,
+                group,
+            } = open;
+            let store = match Arc::try_unwrap(store) {
+                Ok(s) => s,
+                Err(store) => {
+                    let open = Open {
+                        id,
+                        name,
+                        store,
+                        client,
+                        group,
+                    };
+                    lock(&self.unlocked).insert(id, open.clone());
+                    *lock(&self.open) = Some(open);
+                    return Err(busy());
+                }
+            };
+            let vault = self.vault.clone();
+            let passphrase = passphrase.map(str::to_owned);
+            // The task always hands the store back, changed or not.
+            let (store, result) = self
+                .run(async move {
+                    let mut store = store;
+                    let old = match store.status().map(|s| s.key_source) {
+                        Ok(Some(KeySource::Keychain)) => vault.as_deref(),
+                        _ => None,
+                    };
+                    let setup = match (&passphrase, vault.as_deref()) {
+                        (Some(p), _) => KeySetup::Passphrase {
+                            passphrase: p,
+                            kdf: KdfParams::DEFAULT,
+                        },
+                        (None, Some(v)) => KeySetup::Keychain(v),
+                        (None, None) => return Ok((store, Err(Problem::NeedsPassphrase))),
+                    };
+                    let result = store.change_key(setup, old).map_err(failed);
+                    Ok((store, result))
+                })
+                .await?;
+            let open = Open {
+                id,
+                name,
+                store: Arc::new(store),
+                client,
+                group,
+            };
+            lock(&self.unlocked).insert(id, open.clone());
+            *lock(&self.open) = Some(open);
+            result
+        })
+    }
+
+    fn standing(&self) -> Call<'_, Standing> {
+        Box::pin(async move {
+            if lock(&self.locked).is_some() {
+                return Ok(Standing::Locked);
+            }
+            self.standing_now().await
+        })
+    }
+
+    fn register<'a>(
+        &'a self,
+        login: &'a str,
+        password: &'a str,
+        accept_rules: Option<u32>,
+    ) -> Call<'a, Standing> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let body = Registration {
+                username: login.to_owned(),
+                password: password.to_owned(),
+                accept_rules,
+            };
+            let name = open.name.clone();
+            let client = open.client.clone();
+            let token = self
+                .run(async move {
+                    client
+                        .register_with(&body)
+                        .await
+                        .map(|t| t.token)
+                        .map_err(|e| problem(&name, e))
+                })
+                .await?;
+            self.signed_in(login, token).await
+        })
+    }
+
+    fn sign_in<'a>(&'a self, login: &'a str, password: &'a str) -> Call<'a, Standing> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let creds = Credentials {
+                username: login.to_owned(),
+                password: password.to_owned(),
+            };
+            let name = open.name.clone();
+            let client = open.client.clone();
+            let token = self
+                .run(async move {
+                    client
+                        .login(&creds)
+                        .await
+                        .map(|t| t.token)
+                        .map_err(|e| match e {
+                            CoreError::Api(p) if p.status == 401 => Problem::refused(
+                                codes::WRONG_LOGIN,
+                                "That login name and password don't match.",
+                            ),
+                            e => problem(&name, e),
+                        })
+                })
+                .await?;
+            self.signed_in(login, token).await
+        })
+    }
+
+    fn sign_out(&self) -> Call<'_, ()> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let client = open.client.clone();
+            // Best effort: the token is forgotten here either way.
+            let _ = self
+                .run(async move { client.logout().await.map_err(failed) })
+                .await;
+            open.store.set_token(None).map_err(failed)?;
+            let address = lock(&self.settings)
+                .server(open.id)
+                .map(|s| s.address.clone())
+                .unwrap_or_default();
+            self.set_client(Client::new(&address).map_err(failed)?);
+            Ok(())
+        })
+    }
+
+    fn rules(&self) -> Call<'_, Option<ServerRules>> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            self.run(async move {
+                match open.client.rules().await {
+                    Ok(r) => Ok(Some(ServerRules {
+                        markdown: r.body,
+                        version: r.version,
+                        must_accept: r.must_accept,
+                    })),
+                    // No rules yet.
+                    Err(e) if e.status() == Some(404) => Ok(None),
+                    Err(e) => Err(problem(&open.name, e)),
+                }
+            })
+            .await
+        })
+    }
+
+    fn accept_rules(&self, version: u32) -> Call<'_, ()> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            self.run(async move {
+                open.client
+                    .accept_rules(version)
+                    .await
+                    .map_err(|e| match e {
+                        // Changed again while being read.
+                        CoreError::Api(_) if e.status() == Some(409) => Problem::RulesNotAccepted(
+                            e.code(),
+                            "The rules changed again while you were reading. Read the new version."
+                                .into(),
+                        ),
+                        e => problem(&open.name, e),
+                    })
+            })
+            .await
+        })
+    }
+
+    fn create_persona<'a>(&'a self, handle: &'a str, display_name: &'a str) -> Call<'a, Persona> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let body = CreatePersona {
+                handle: handle.trim().to_owned(),
+                display_name: Some(display_name.trim().to_owned()).filter(|d| !d.is_empty()),
+                summary: None,
+            };
+            self.run(async move {
+                open.client
+                    .create_persona(&body)
+                    .await
+                    .map_err(|e| problem(&open.name, e))
+            })
+            .await
+        })
+    }
+
+    fn update_persona<'a>(
+        &'a self,
+        id: Uuid,
+        display_name: &'a str,
+        summary: &'a str,
+    ) -> Call<'a, Persona> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let body = UpdatePersona {
+                display_name: Some(display_name.trim().to_owned()),
+                summary: Some(summary.trim().to_owned()),
+            };
+            self.run(async move {
+                open.client
+                    .update_persona(id, &body)
+                    .await
+                    .map_err(|e| problem(&open.name, e))
+            })
+            .await
+        })
+    }
+
+    fn delete_persona(&self, id: Uuid) -> Call<'_, ()> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            self.run(async move {
+                open.client
+                    .delete_persona(id)
+                    .await
+                    .map_err(|e| problem(&open.name, e))
+            })
+            .await
+        })
+    }
+
+    fn prepare<'a>(&'a self, persona: Uuid, progress: &'a dyn Fn(Step)) -> Call<'a, ()> {
+        self.prepare_with(persona, progress, false)
+    }
+
+    fn start_over<'a>(&'a self, persona: Uuid, progress: &'a dyn Fn(Step)) -> Call<'a, ()> {
+        self.prepare_with(persona, progress, true)
+    }
+
+    fn removed_here(&self) -> bool {
+        self.opened()
+            .ok()
+            .is_some_and(|o| devices::was_removed(&o.store).unwrap_or(false))
+    }
+
+    fn suggested_device_name(&self) -> String {
+        computer_name().unwrap_or_else(|| "My computer".into())
+    }
+
+    fn device_name(&self) -> Option<String> {
+        let open = self.opened().ok()?;
+        devices::name(&open.store).ok().flatten()
+    }
+
+    fn rename_device<'a>(&'a self, name: &'a str) -> Call<'a, ()> {
+        let name = name.to_owned();
+        Box::pin(async move {
+            let open = self.opened()?;
+            devices::set_name(&open.store, &name)
+                .map_err(|e| Problem::refused(codes::DEVICE_NAME_BAD, sentence(&e)))?;
+            let label = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                devices::announce(&open.store, &open.client)
+                    .await
+                    .map_err(|e| problem(&label, e))
+            })
+            .await
+        })
+    }
+
+    fn devices(&self) -> Call<'_, Vec<Device>> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let name = open.name.clone();
+            self.run(async move {
+                let p = |e| problem(&name, e);
+                let list = {
+                    let _group = open.exclusive().await;
+                    devices::list(&open.store, &open.client).await.map_err(p)?
+                };
+                let personas = open.client.personas().await.map_err(p)?;
+                let handle = |id: &Uuid| {
+                    personas
+                        .iter()
+                        .find(|p| p.id == *id)
+                        .map(|p| p.handle.clone())
+                };
+                Ok(list
+                    .into_iter()
+                    .map(|d| Device {
+                        id: d.id,
+                        this_device: d.this_device,
+                        name: d.name,
+                        since: d.since,
+                        personas: d
+                            .personas
+                            .iter()
+                            .filter_map(|p| handle(&p.persona))
+                            .collect(),
+                    })
+                    .collect())
+            })
+            .await
+        })
+    }
+
+    fn remove_device(&self, id: Uuid, reason: RemoveReason) -> Call<'_, ()> {
+        let reason = match reason {
+            RemoveReason::Lost => RevocationReason::Lost,
+            RemoveReason::Compromised => RevocationReason::Compromised,
+            RemoveReason::Retired => RevocationReason::Retired,
+            RemoveReason::Unspecified => RevocationReason::Unspecified,
+        };
+        Box::pin(async move {
+            let open = self.opened()?;
+            let label = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                devices::remove(&open.store, &open.client, id, reason)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| problem(&label, e))
+            })
+            .await
+        })
+    }
+
+    fn start_link<'a>(&'a self, name: &'a str) -> Call<'a, LinkStart> {
+        let name = name.to_owned();
+        Box::pin(async move {
+            let open = self.opened()?;
+            devices::set_name(&open.store, &name)
+                .map_err(|e| Problem::refused(codes::DEVICE_NAME_BAD, sentence(&e)))?;
+            let label = open.name.clone();
+            let pending = self
+                .run(async move {
+                    let _group = open.exclusive().await;
+                    devices::start_link(&open.store, &open.client)
+                        .await
+                        .map_err(|e| problem(&label, e))
+                })
+                .await?;
+            *lock(&self.link) = Some(pending.link_id.clone());
+            Ok(LinkStart {
+                code: pending.code,
+                words: pending.words.iter().map(|w| (*w).to_owned()).collect(),
+                expires_in_secs: LINK_SECS,
+            })
+        })
+    }
+
+    fn link_answer(&self) -> Call<'_, Option<Vec<String>>> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let link = lock(&self.link).clone().ok_or(Problem::Gone)?;
+            let label = open.name.clone();
+            let answer = self
+                .run(async move {
+                    let _group = open.exclusive().await;
+                    match devices::wait_for_link(
+                        &open.store,
+                        &open.client,
+                        &link,
+                        std::time::Duration::from_secs(1),
+                        std::time::Duration::from_secs(ANSWER_WAIT_SECS),
+                    )
+                    .await
+                    {
+                        Ok(words) => Ok(Some(words.iter().map(|w| (*w).to_owned()).collect())),
+                        Err(CoreError::Keys(c, _)) if c == codes::LINK_NOT_ANSWERED => Ok(None),
+                        Err(CoreError::Keys(c, _)) if c == codes::LINK_EXPIRED => {
+                            Err(Problem::Gone)
+                        }
+                        Err(e) => Err(problem(&label, e)),
+                    }
+                })
+                .await;
+            if matches!(answer, Ok(Some(_)) | Err(Problem::Gone)) {
+                *lock(&self.link) = None;
+            }
+            answer
+        })
+    }
+
+    fn finish_link(&self) -> Call<'_, Standing> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let label = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                devices::finish_link(&open.store, &open.client)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| problem(&label, e))
+            })
+            .await?;
+            self.standing_now().await
+        })
+    }
+
+    fn abandon_link(&self) -> Result<(), Problem> {
+        *lock(&self.link) = None;
+        let open = self.opened()?;
+        devices::abandon_link(&open.store).map_err(failed)
+    }
+
+    fn approve_link<'a>(&'a self, typed: &'a str) -> Call<'a, Approval> {
+        let typed = typed.to_owned();
+        Box::pin(async move {
+            let code: devices::LinkCode = typed.parse().map_err(|_| {
+                Problem::refused(
+                    codes::LINK_CODE_BAD,
+                    "Type the six words the new computer shows, or paste its whole link code.",
+                )
+            })?;
+            let open = self.opened()?;
+            let label = open.name.clone();
+            self.run(async move {
+                let p = |e| problem(&label, e);
+                if code.needs_lookup() {
+                    match devices::waiting(&open.client).await.map_err(p)? {
+                        devices::Waiting::None => return Ok(Approval::NoneWaiting),
+                        devices::Waiting::Several(n) => return Ok(Approval::Several(n)),
+                        devices::Waiting::One(_) => {}
+                    }
+                }
+                let _group = open.exclusive().await;
+                match devices::approve(&open.store, &open.client, &code).await {
+                    Ok(a) => Ok(Approval::Approved {
+                        confirm: a.confirm.iter().map(|w| (*w).to_owned()).collect(),
+                    }),
+                    Err(CoreError::Keys(c, _)) if c == codes::LINK_MISMATCH => {
+                        Ok(Approval::WordsDiffer)
+                    }
+                    Err(CoreError::Keys(c, _)) if c == codes::LINK_EXPIRED => {
+                        Ok(Approval::NoneWaiting)
+                    }
+                    Err(e) => Err(p(e)),
+                }
+            })
+            .await
+        })
+    }
+
+    fn waiting_links(&self) -> Call<'_, usize> {
+        self.call(|client| async move { Ok(client.waiting_links().await?.len()) })
+    }
+
+    fn key_details(&self) -> Call<'_, Vec<PersonaKeys>> {
+        self.call_with_store(|store, client| async move {
+            let mut out = Vec::new();
+            for p in client.personas().await? {
+                let mut rows = vec![("Persona id".to_owned(), p.id.to_string())];
+                let published = client.persona_keys(p.id).await?;
+                let checked = keys::check_published(&published, &p.actor_uri, keys::now_ms())?;
+                if let Some((_, version)) = &checked.identity {
+                    rows.push((
+                        "Identity key".into(),
+                        checked.fingerprint().unwrap_or_default(),
+                    ));
+                    rows.push(("Identity key version".into(), version.to_string()));
+                } else {
+                    rows.push(("Identity key".into(), "none published".into()));
+                }
+                let mine = keys::load_device(&store, p.id)?;
+                let mine_key = mine.as_ref().map(|d| d.public());
+                for d in &checked.devices {
+                    let here = mine_key.is_some_and(|m| m.as_slice() == d.device_key);
+                    let label = if here {
+                        format!("Device {} (this computer)", d.id)
+                    } else {
+                        format!("Device {}", d.id)
+                    };
+                    rows.push((label, device_status(&d.status)));
+                }
+                if let Some(id) = mine.and_then(|d| d.id)
+                    && let Ok(s) = client.key_package_status(p.id, id).await
+                {
+                    rows.push(("KeyPackages waiting".into(), s.available.to_string()));
+                }
+                out.push(PersonaKeys {
+                    handle: p.handle,
+                    rows,
+                });
+            }
+            Ok(out)
+        })
+    }
+
+    fn send_request<'a>(
+        &'a self,
+        persona: Uuid,
+        prompt: Uuid,
+        pitch: &'a str,
+        days: u32,
+    ) -> Call<'a, SentRequest> {
+        let pitch = pitch.to_owned();
+        Box::pin(async move {
+            let open = self.opened()?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                let work = async {
+                    let client = &open.client;
+                    let me = client
+                        .personas()
+                        .await?
+                        .into_iter()
+                        .find(|p| p.id == persona)
+                        .ok_or_else(|| {
+                            CoreError::coded(codes::PERSONA_GONE, "that persona is gone")
+                        })?;
+                    let target = client.prompt(prompt).await?;
+                    let sent = requests::send(&open.store, client, &me, prompt, &pitch, Some(days))
+                        .await?;
+                    Ok(SentRequest {
+                        id: sent.request.id,
+                        prompt: Some((prompt, target.title)),
+                        persona: me.handle,
+                        status: plait_ui::backend::RequestStatus::Waiting,
+                        expires_at: sent.request.expires_at,
+                    })
+                };
+                work.await.map_err(|e| request_problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn sent_requests(&self) -> Call<'_, Vec<SentRequest>> {
+        self.call(|client| async move {
+            let handles: HashMap<Uuid, String> = client
+                .personas()
+                .await?
+                .into_iter()
+                .map(|p| (p.id, p.handle))
+                .collect();
+            let mut titles: HashMap<Uuid, Option<String>> = HashMap::new();
+            let mut out = Vec::new();
+            for r in requests::list(&client).await? {
+                let prompt = match r.prompt {
+                    Some(id) => {
+                        let title = match titles.get(&id) {
+                            Some(t) => t.clone(),
+                            None => {
+                                let t = match client.prompt(id).await {
+                                    Ok(p) => Some(p.title),
+                                    Err(e) if matches!(e.status(), Some(404 | 410)) => None,
+                                    Err(e) => return Err(e),
+                                };
+                                titles.insert(id, t.clone());
+                                t
+                            }
+                        };
+                        title.map(|t| (id, t))
+                    }
+                    None => None,
+                };
+                out.push(SentRequest {
+                    id: r.id,
+                    prompt,
+                    persona: handles.get(&r.persona).cloned().unwrap_or_default(),
+                    status: r.status,
+                    expires_at: r.expires_at,
+                });
+            }
+            Ok(out)
+        })
+    }
+
+    fn withdraw_request(&self, id: Uuid) -> Call<'_, ()> {
+        self.call_request(move |store, client| async move {
+            requests::withdraw(&store, &client, id).await
+        })
+    }
+
+    fn waiting_requests(&self) -> Call<'_, Vec<WaitingPrompt>> {
+        self.call(|client| async move {
+            Ok(requests::waiting(&client)
+                .await?
+                .into_iter()
+                .map(|w| WaitingPrompt {
+                    prompt: w.prompt,
+                    title: w.title,
+                    pending: w.pending,
+                    held: w.held,
+                    newest: w.newest,
+                })
+                .collect())
+        })
+    }
+
+    fn inbox(&self, prompt: Uuid, held: bool) -> Call<'_, Inbox> {
+        // Reading a new request joins its group, using up this device's
+        // KeyPackage: two reads at once would find it gone (#29, 3f-2).
+        self.call_locked(move |store, client| async move {
+            let inbox = requests::inbox(&store, &client, prompt, held).await?;
+            Ok(Inbox {
+                held: inbox.held,
+                requests: inbox
+                    .requests
+                    .into_iter()
+                    .map(|r| IncomingRequest {
+                        id: r.id,
+                        handle: r.requester.handle,
+                        display_name: r.requester.display_name,
+                        received_at: r.received_at,
+                        expires_at: r.expires_at,
+                        pitch: r.pitch.map_err(|u| match u {
+                            requests::Unread::NotForThisDevice => Unread::NotForThisComputer,
+                            requests::Unread::SentHere => Unread::SentFromHere,
+                            requests::Unread::KeyChanged { .. } => Unread::KeyChanged,
+                            u => Unread::Refused {
+                                detail: u.to_string(),
+                            },
+                        }),
+                    })
+                    .collect(),
+            })
+        })
+    }
+
+    fn accept_request(&self, id: Uuid) -> Call<'_, ()> {
+        self.call_request(move |store, client| async move {
+            requests::accept(&store, &client, id).await.map(|_| ())
+        })
+    }
+
+    fn decline_request(&self, id: Uuid) -> Call<'_, ()> {
+        self.call_request(move |store, client| async move {
+            requests::decline(&store, &client, id).await
+        })
+    }
+
+    fn key_change<'a>(&'a self, handle: &'a str, as_persona: Uuid) -> Call<'a, Option<KeyChange>> {
+        let handle = handle.to_owned();
+        self.call_with_store(move |store, client| async move {
+            let me = client
+                .personas()
+                .await?
+                .into_iter()
+                .find(|p| p.id == as_persona)
+                .ok_or_else(|| CoreError::coded(codes::PERSONA_GONE, "that persona is gone"))?;
+            Ok(keys::key_change(&store, &client, &handle, &me)
+                .await?
+                .map(|c| KeyChange {
+                    handle: c.handle,
+                    words: c.words.into_iter().map(str::to_owned).collect(),
+                    fingerprint: c.now.0,
+                }))
+        })
+    }
+
+    fn identity_words<'a>(
+        &'a self,
+        handle: &'a str,
+        as_persona: Uuid,
+    ) -> Call<'a, Option<Vec<String>>> {
+        let handle = handle.trim().trim_start_matches('@').to_owned();
+        self.call_with_store(move |store, client| async move {
+            let me = client
+                .personas()
+                .await?
+                .into_iter()
+                .find(|p| p.id == as_persona)
+                .ok_or_else(|| CoreError::coded(codes::PERSONA_GONE, "that persona is gone"))?;
+            Ok(keys::identity_words(&store, &client, &handle, &me)
+                .await?
+                .map(|w| w.into_iter().map(str::to_owned).collect()))
+        })
+    }
+
+    fn accept_key_change<'a>(&'a self, handle: &'a str, fingerprint: &'a str) -> Call<'a, ()> {
+        let (handle, fingerprint) = (handle.to_owned(), fingerprint.to_owned());
+        self.call_with_store(move |store, client| async move {
+            keys::accept_change(&store, &client, &handle, &fingerprint).await
+        })
+    }
+
+    fn sessions(&self) -> Call<'_, Vec<SessionSummary>> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let name = open.name.clone();
+            self.run(async move {
+                // Syncing sends in each session's group: one task at a time.
+                let _lock = open.exclusive().await;
+                let work = async {
+                    let (store, client) = (&open.store, &open.client);
+                    let mut titles = Titles::default();
+                    let mut out = Vec::new();
+                    for l in sessions::list(store, client).await? {
+                        let gid = plait_proto::keys::unb64(&l.session.id).unwrap_or_default();
+                        let channels = history::channels(store, &gid)?;
+                        let latest = history::messages(store, &gid)?
+                            .last()
+                            .and_then(|m| note_time(&m.hlc));
+                        let prompt = titles.of(client, l.session.prompt).await?;
+                        out.push(summary(
+                            &l.session,
+                            standing(l.standing),
+                            prompt,
+                            &channels,
+                            latest,
+                            history::opened(store, &gid)?,
+                        ));
+                    }
+                    out.sort_by_key(|s| std::cmp::Reverse(s.latest));
+                    Ok(out)
+                };
+                work.await.map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn session<'a>(&'a self, id: &'a str) -> Call<'a, SessionView> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            let open = self.opened()?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _lock = open.exclusive().await;
+                let work = async {
+                    let (store, client) = (&open.store, &open.client);
+                    let reading = sessions::read(store, client, &id).await?;
+                    let s = &reading.session;
+                    let gid = plait_proto::keys::unb64(&s.id).unwrap_or_default();
+                    let channels = history::channels(store, &gid)?;
+                    let prompt = Titles::default().of(client, s.prompt).await?;
+                    let by_id: std::collections::HashMap<&str, u64> = reading
+                        .messages
+                        .iter()
+                        .map(|m| (m.id.as_str(), m.seq))
+                        .collect();
+                    let notes = reading
+                        .messages
+                        .iter()
+                        .map(|m| Note {
+                            seq: m.seq,
+                            mine: s
+                                .members
+                                .iter()
+                                .any(|w| w.persona.is_some() && w.actor_uri == m.sender),
+                            author: writer_of(s, &m.sender),
+                            channel: m.channel.clone(),
+                            content: m.content.clone(),
+                            deleted: m.deleted,
+                            edited: m.edited(),
+                            reply_to: m.in_reply_to.as_deref().and_then(|r| by_id.get(r).copied()),
+                            at: note_time(&m.hlc).unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+                            attachments: m.attachments.len(),
+                        })
+                        .collect::<Vec<_>>();
+                    let latest = notes.last().map(|n| n.at);
+                    let opened = history::opened(store, &gid)?;
+                    let verification = verification(store, client, s).await?;
+                    Ok(SessionView {
+                        summary: summary(
+                            s,
+                            SessionStanding::Joined,
+                            prompt,
+                            &channels,
+                            latest,
+                            opened,
+                        ),
+                        channels: channels.iter().map(channel_view).collect(),
+                        notes,
+                        held_back: !reading.gaps.is_empty(),
+                        history_missing: reading.history_missing.is_some(),
+                        verification,
+                    })
+                };
+                work.await.map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn mark_shown<'a>(&'a self, id: &'a str, channel: &'a str, upto: u64) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let gid = plait_proto::keys::unb64(id).ok_or_else(|| failed("bad session id"))?;
+        history::mark_shown(&open.store, &gid, channel, upto).map_err(|e| problem(&open.name, e))
+    }
+
+    fn mark_opened(&self, id: &str) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let gid = plait_proto::keys::unb64(id).ok_or_else(|| failed("bad session id"))?;
+        history::mark_opened(&open.store, &gid).map_err(|e| problem(&open.name, e))
+    }
+
+    fn draft(&self, id: &str, channel: &str) -> Result<Draft, Problem> {
+        let open = self.opened()?;
+        let d = drafts::draft(&open.store, &session_gid(id)?, channel)
+            .map_err(|e| problem(&open.name, e))?
+            .unwrap_or_default();
+        Ok(Draft {
+            text: d.text,
+            reply_to: d.reply_to,
+        })
+    }
+
+    fn drafted(&self, id: &str) -> Result<Vec<String>, Problem> {
+        let open = self.opened()?;
+        drafts::drafted(&open.store, &session_gid(id)?).map_err(|e| problem(&open.name, e))
+    }
+
+    fn waiting(&self, id: &str) -> Result<Vec<QueuedNote>, Problem> {
+        let open = self.opened()?;
+        let q =
+            drafts::queued(&open.store, &session_gid(id)?).map_err(|e| problem(&open.name, e))?;
+        Ok(q.into_iter().map(queued_note).collect())
+    }
+
+    fn save_draft(&self, id: &str, channel: &str, draft: &Draft) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let d = drafts::Draft {
+            text: draft.text.clone(),
+            reply_to: draft.reply_to,
+        };
+        drafts::save(&open.store, &session_gid(id)?, channel, &d)
+            .map_err(|e| problem(&open.name, e))
+    }
+
+    fn send_note<'a>(
+        &'a self,
+        id: &'a str,
+        channel: &'a str,
+        text: &'a str,
+        reply_to: Option<u64>,
+    ) -> Call<'a, Sending> {
+        let (id, channel, text) = (id.to_owned(), channel.to_owned(), text.to_owned());
+        Box::pin(async move {
+            let open = self.opened()?;
+            let gid = session_gid(&id)?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _lock = open.exclusive().await;
+                let work = async {
+                    let (store, client) = (&open.store, &open.client);
+                    let q = drafts::queue(store, &gid, &channel, &text, reply_to)?;
+                    let done = drafts::flush(store, client, &id, &gid).await?;
+                    Ok(sending(&done, &drafts::queued(store, &gid)?, Some(q.id)))
+                };
+                work.await.map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, Sending> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            let open = self.opened()?;
+            let gid = session_gid(&id)?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _lock = open.exclusive().await;
+                let work = async {
+                    let (store, client) = (&open.store, &open.client);
+                    let done = drafts::flush(store, client, &id, &gid).await?;
+                    Ok(sending(&done, &drafts::queued(store, &gid)?, None))
+                };
+                work.await.map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn change_waiting(&self, id: &str, note: Uuid, text: &str) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let gid = session_gid(id)?;
+        if !drafts::queued(&open.store, &gid)
+            .map_err(|e| problem(&open.name, e))?
+            .iter()
+            .any(|q| q.id == note)
+        {
+            return Err(Problem::Gone);
+        }
+        drafts::change(&open.store, &gid, note, text).map_err(|e| problem(&open.name, e))
+    }
+
+    fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem> {
+        let open = self.opened()?;
+        match drafts::withdraw(&open.store, &session_gid(id)?, note) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(Problem::Gone),
+            Err(e) => Err(problem(&open.name, e)),
+        }
+    }
+
+    fn note_versions<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, Vec<NoteVersion>> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            let m = sessions::versions(&store, &client, &id, seq).await?;
+            Ok(m.versions
+                .into_iter()
+                .map(|v| NoteVersion {
+                    at: note_time(&v.hlc).unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+                    content: v.content,
+                })
+                .collect())
+        })
+    }
+
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()> {
+        let (id, text) = (id.to_owned(), text.to_owned());
+        self.call_locked(move |store, client| async move {
+            sessions::edit(&store, &client, &id, seq, &text)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            sessions::delete(&store, &client, &id, seq)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            sessions::restore(&store, &client, &id, seq)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(
+            move |store, client| async move { sessions::leave(&store, &client, &id).await },
+        )
+    }
+
+    fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            Ok(safety(
+                sessions::safety_numbers(&store, &client, &id).await?,
+            ))
+        })
+    }
+
+    fn confirm_verified<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            Ok(safety(
+                sessions::confirm_verified(&store, &client, &id).await?,
+            ))
+        })
+    }
+
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()> {
+        let (id, name, about) = (id.to_owned(), name.to_owned(), about.map(str::to_owned));
+        self.call_locked(move |store, client| async move {
+            sessions::name_channel(&store, &client, &id, &name, about.as_deref())
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn answers_seen(&self) -> Vec<Uuid> {
+        self.opened()
+            .ok()
+            .and_then(|o| requests::answers_seen(&o.store).ok())
+            .map(|s| s.into_iter().collect())
+            .unwrap_or_default()
+    }
+
+    fn set_answers_seen(&self, ids: &[Uuid]) -> Result<(), Problem> {
+        let open = self.opened()?;
+        requests::set_answers_seen(&open.store, &ids.iter().copied().collect()).map_err(failed)
+    }
+
+    fn upkeep(&self) -> Call<'_, Option<Problem>> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            if open.store.token().map_err(failed)?.is_none() {
+                return Ok(None);
+            }
+            let name = open.name.clone();
+            let report = self
+                .run(async move {
+                    let _group = open.exclusive().await;
+                    let report = devices::maintain(&open.store, &open.client)
+                        .await
+                        .map_err(|e| problem(&name, e))?;
+                    // Back in touch: notes written offline go, in order.
+                    // A refusal waits on its note in the session.
+                    let _ = drafts::flush_all(&open.store, &open.client).await;
+                    Ok(report)
+                })
+                .await;
+            let (line, tell) = match &report {
+                Ok(r) if r.caught_up.removed => (
+                    "removed from the login's devices".to_owned(),
+                    Some(Problem::refused(
+                        codes::REMOVED_HERE,
+                        "This computer was removed from your devices. Link it again to keep writing here.",
+                    )),
+                ),
+                Ok(r) if r.caught_up.stale => (
+                    "fell behind the device group".to_owned(),
+                    Some(Problem::refused(
+                        codes::FELL_BEHIND,
+                        "This computer was away too long to catch up. Link it again from another device.",
+                    )),
+                ),
+                Ok(r) => (
+                    format!(
+                        "ok: {} refilled, {} history problem",
+                        r.refilled.len(),
+                        r.history_problem.as_deref().unwrap_or("no")
+                    ),
+                    None,
+                ),
+                Err(e) => (format!("error: {e} {}", e.detail().unwrap_or("")), None),
+            };
+            {
+                let mut log = lock(&self.upkeep_log);
+                log.push(line);
+                let excess = log.len().saturating_sub(UPKEEP_LOG);
+                log.drain(..excess);
+            }
+            report.map(|_| tell)
+        })
+    }
+
+    fn next_notice(&self) -> Call<'_, ()> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            self.run(async move {
+                let p = |e| problem(&open.name, e);
+                let mut stream = open.client.events().await.map_err(p)?;
+                match stream.next().await.map_err(p)? {
+                    Some(_) => Ok(()),
+                    // The server closed the stream: wait before reopening.
+                    None => Err(Problem::Unreachable(open.name.clone())),
+                }
+            })
+            .await
+        })
+    }
+
+    fn account(&self) -> Call<'_, AccountSettings> {
+        self.call(|c| async move { c.account().await })
+    }
+
+    fn prompts(&self, query: PromptQuery) -> Call<'_, PromptPage> {
+        self.call(|c| async move { c.prompts(&query).await })
+    }
+
+    fn prompt(&self, id: Uuid) -> Call<'_, Prompt> {
+        self.call(move |c| async move { c.prompt(id).await })
+    }
+
+    fn create_prompt(&self, body: CreatePrompt) -> Call<'_, Prompt> {
+        self.call(|c| async move { c.create_prompt(&body).await })
+    }
+
+    fn update_prompt(&self, id: Uuid, body: UpdatePrompt) -> Call<'_, Prompt> {
+        self.call(move |c| async move { c.update_prompt(id, &body).await })
+    }
+
+    fn delete_prompt(&self, id: Uuid) -> Call<'_, ()> {
+        self.call(move |c| async move { c.delete_prompt(id).await })
+    }
+
+    fn prompt_link(&self, id: Uuid) -> Option<String> {
+        let open = lock(&self.open).clone()?;
+        let address = lock(&self.settings).server(open.id)?.address.clone();
+        Some(format!("{address}/p/{id}"))
+    }
+
+    fn tag_types(&self) -> Call<'_, Vec<TagNamespace>> {
+        self.call(|c| async move { c.tag_namespaces().await })
+    }
+
+    fn tag_policy(&self) -> Call<'_, TagPolicy> {
+        self.call(|c| async move { c.instance().await.map(|i| i.tag_policy) })
+    }
+
+    fn tag_page<'a>(&'a self, namespace: &'a str, query: TagPageQuery) -> Call<'a, TagPage> {
+        let namespace = namespace.to_owned();
+        self.call(move |c| async move { c.tag_page(&namespace, &query).await })
+    }
+
+    fn find_tags(&self, query: TagQuery) -> Call<'_, Vec<Tag>> {
+        self.call(|c| async move { c.tags(&query).await })
+    }
+
+    fn frequent_tags(&self, persona: Option<Uuid>) -> Call<'_, Vec<Tag>> {
+        self.call(move |c| async move { c.frequent_tags(persona).await })
+    }
+
+    fn report(&self, body: CreateReport) -> Call<'_, ()> {
+        self.call(|c| async move { c.report(&body).await })
+    }
+
+    fn notices(&self, before: Option<i64>) -> Call<'_, Vec<AccountNotice>> {
+        self.call(move |c| async move { c.notices(before).await })
+    }
+
+    fn mark_notices_read(&self) -> Call<'_, ()> {
+        self.call(|c| async move { c.mark_notices_read().await })
+    }
+
+    fn board_settings(&self) -> Call<'_, BoardSettings> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            self.run(async move {
+                open.client
+                    .account()
+                    .await
+                    .map(|a| BoardSettings {
+                        maturity_max: a.maturity_max,
+                    })
+                    .map_err(|e| problem(&open.name, e))
+            })
+            .await
+        })
+    }
+
+    fn set_board_settings(&self, settings: BoardSettings) -> Call<'_, BoardSettings> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            self.run(async move {
+                open.client
+                    .update_account(&UpdateAccountSettings {
+                        maturity_max: Some(settings.maturity_max),
+                        ..Default::default()
+                    })
+                    .await
+                    .map(|a| BoardSettings {
+                        maturity_max: a.maturity_max,
+                    })
+                    .map_err(|e| problem(&open.name, e))
+            })
+            .await
+        })
+    }
+
+    fn app_settings(&self) -> AppSettings {
+        let folder = self.stores_folder();
+        let s = lock(&self.settings);
+        AppSettings {
+            theme: match s.theme {
+                settings::Theme::System => Theme::System,
+                settings::Theme::Light => Theme::Light,
+                settings::Theme::Dark => Theme::Dark,
+            },
+            text_size: s.text_size,
+            advanced: s.advanced,
+            stores_folder: folder.display().to_string(),
+        }
+    }
+
+    fn set_app_settings(&self, new: AppSettings) -> Result<(), Problem> {
+        {
+            let mut s = lock(&self.settings);
+            s.theme = match new.theme {
+                Theme::System => settings::Theme::System,
+                Theme::Light => settings::Theme::Light,
+                Theme::Dark => settings::Theme::Dark,
+            };
+            s.text_size = new.text_size.clamp(80, 160);
+            s.advanced = new.advanced;
+        }
+        self.save_settings()
+    }
+
+    fn move_stores<'a>(&'a self, folder: &'a str) -> Call<'a, ()> {
+        Box::pin(async move {
+            let to = PathBuf::from(folder.trim());
+            if !to.is_absolute() {
+                return Err(Problem::refused(
+                    codes::STORES_NOT_MOVED,
+                    "Choose a full folder path.",
+                ));
+            }
+            let from = self.stores_folder();
+            if to == from {
+                return Ok(());
+            }
+            let ids: Vec<Uuid> = lock(&self.settings).servers.iter().map(|s| s.id).collect();
+            for id in &ids {
+                let target = to.join(format!("{id}.quill"));
+                if target.exists() {
+                    return Err(Problem::refused(
+                        codes::STORES_NOT_MOVED,
+                        format!(
+                            "{} already holds a store for one of your servers.",
+                            to.display()
+                        ),
+                    ));
+                }
+            }
+            // Close the stores while their files move.
+            let current = lock(&self.open).take().map(|o| o.id);
+            lock(&self.unlocked).clear();
+            std::fs::create_dir_all(&to).map_err(failed)?;
+            for id in &ids {
+                let source = from.join(format!("{id}.quill"));
+                if !source.exists() {
+                    continue;
+                }
+                let target = to.join(format!("{id}.quill"));
+                if std::fs::rename(&source, &target).is_err() {
+                    // Another disk: copy, then remove the original.
+                    std::fs::copy(&source, &target).map_err(failed)?;
+                    std::fs::remove_file(&source).map_err(failed)?;
+                }
+            }
+            lock(&self.settings).stores_folder = Some(to);
+            self.save_settings()?;
+            if let Some(id) = current {
+                self.open_server(id).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn utc_offset(&self) -> time::UtcOffset {
+        self.offset
+    }
+
+    fn sleep(&self, ms: u64) -> std::pin::Pin<Box<dyn Future<Output = ()> + '_>> {
+        let timer = self
+            .runtime
+            .spawn(tokio::time::sleep(std::time::Duration::from_millis(ms)));
+        Box::pin(async move {
+            let _ = timer.await;
+        })
+    }
+
+    fn details(&self) -> Call<'_, Details> {
+        Box::pin(async move {
+            let mut rows: Vec<(String, String)> = Vec::new();
+            let folder = self.stores_folder();
+            rows.push(("Stores folder".into(), folder.display().to_string()));
+            rows.push((
+                "Settings file".into(),
+                self.paths.settings.display().to_string(),
+            ));
+            let Ok(open) = self.opened() else {
+                return Ok(Details { rows });
+            };
+            rows.push(("Server id (this app's)".into(), open.id.to_string()));
+            if let Ok(status) = open.store.status() {
+                if let Some(path) = status.path {
+                    rows.push(("Store".into(), path.display().to_string()));
+                }
+                rows.push((
+                    "Store key".into(),
+                    match status.key_source {
+                        Some(KeySource::Keychain) => "system keychain",
+                        Some(KeySource::Passphrase) => "passphrase",
+                        None => "in memory",
+                    }
+                    .into(),
+                ));
+                rows.push(("Store size".into(), format!("{} bytes", status.file_bytes)));
+            }
+            let o = open.clone();
+            let extra = self
+                .run(async move {
+                    let mut rows = Vec::new();
+                    if let Ok(info) = o.client.instance().await {
+                        rows.push((
+                            "Server software".into(),
+                            format!("{} {}", info.software, info.software_version),
+                        ));
+                        rows.push((
+                            "Message limit".into(),
+                            format!("{} bytes", info.limits.max_message_bytes),
+                        ));
+                    }
+                    if let Ok(personas) = o.client.personas().await {
+                        for p in personas {
+                            rows.push((format!("@{} id", p.handle), p.id.to_string()));
+                            if let Ok(Some(identity)) = keys::load_identity(&o.store, p.id) {
+                                rows.push((
+                                    format!("@{} identity key", p.handle),
+                                    identity.fingerprint(),
+                                ));
+                            }
+                            let device = keys::load_device(&o.store, p.id).ok().flatten();
+                            if let Some(d) = &device {
+                                rows.push((
+                                    format!("@{} device key", p.handle),
+                                    plait_certs::fingerprint(&d.public()),
+                                ));
+                            }
+                            if let Some(dev) = device.and_then(|d| d.id) {
+                                rows.push((format!("@{} device", p.handle), dev.to_string()));
+                                if let Ok(s) = o.client.key_package_status(p.id, dev).await {
+                                    rows.push((
+                                        format!("@{} KeyPackages", p.handle),
+                                        s.available.to_string(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    Ok(rows)
+                })
+                .await
+                .unwrap_or_default();
+            rows.extend(extra);
+            for (i, line) in lock(&self.upkeep_log).iter().enumerate() {
+                rows.push((format!("Upkeep {}", i + 1), line.clone()));
+            }
+            Ok(Details { rows })
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn the_apps_note_limit_is_cores() {
+        assert_eq!(plait_ui::backend::NOTE_MAX, sessions::MAX_MESSAGE_CHARS);
+    }
+
+    #[test]
+    fn typed_addresses_get_the_right_scheme() {
+        assert_eq!(
+            normalize("writers.example/").unwrap(),
+            "https://writers.example"
+        );
+        assert_eq!(
+            normalize("localhost:8088").unwrap(),
+            "http://localhost:8088"
+        );
+        assert_eq!(normalize("127.0.0.1").unwrap(), "http://127.0.0.1");
+        assert_eq!(normalize("[::1]:8080").unwrap(), "http://[::1]:8080");
+        assert_eq!(
+            normalize("https://localhost:8088").unwrap(),
+            "https://localhost:8088"
+        );
+        // Only this computer gets plain http.
+        assert_eq!(
+            normalize("localhost.example").unwrap(),
+            "https://localhost.example"
+        );
+        assert!(normalize("http://writers.example").is_err());
+        assert!(normalize(" ").is_err());
+    }
+}

@@ -1,0 +1,67 @@
+[package]
+name = "plait-core"
+description = "Quill client library: API client, local state and (from Phase 2) MLS sessions. Never linked by the server."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+plait-certs = { workspace = true, features = ["sign"] }
+plait-proto.workspace = true
+
+argon2.workspace = true
+chacha20poly1305 = { workspace = true, features = ["zeroize"] }
+directories.workspace = true
+ed25519-dalek.workspace = true
+getrandom.workspace = true
+hkdf.workspace = true
+keyring-core.workspace = true
+openmls.workspace = true
+openmls_rust_crypto.workspace = true
+openmls_traits.workspace = true
+redb.workspace = true
+sha2.workspace = true
+aes-gcm.workspace = true
+age.workspace = true
+ruzstd.workspace = true
+reqwest = { workspace = true, features = ["rustls"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tls_codec.workspace = true
+# Polling while a link waits.
+tokio = { workspace = true, features = ["time"] }
+url.workspace = true
+time.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+# OS keychains for the store key.
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1"
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+# The login keychain; "protected" needs app entitlements a CLI lacks.
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Pure-Rust D-Bus (zbus) with RustCrypto; no libdbus or OpenSSL.
+zbus-secret-service-keyring-store = { version = "1", features = ["rt-async-io-crypto-rust"] }
+
+[dev-dependencies]
+# Cross-checks the server's KeyPackage parser against real packages.
+plait-mls-envelope.workspace = true
+tempfile = "3"
+hex = "0.4"
+# Checks the JSON Schemas in schemas/ against what the client produces.
+boon = "0.6"
+
+[features]
+# Helpers for end-to-end tests that play a dishonest client.
+test-tools = []
+
+[lints]
+workspace = true

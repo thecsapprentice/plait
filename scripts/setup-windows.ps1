@@ -196,7 +196,7 @@ if ($Build) {
     if (-not (Test-Path 'Cargo.toml') -or -not (Test-Path 'rust-toolchain.toml')) {
         throw 'Run this from the root of the quill repository to build.'
     }
-    cargo build --release --locked -p quill
+    cargo build --release --locked -p plait
     if ($LASTEXITCODE -ne 0) { throw 'The build failed; see the errors above.' }
     $exe = Resolve-Path 'target\release\quill.exe'
     Write-Host ''

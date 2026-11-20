@@ -1,0 +1,37 @@
+[package]
+name = "plait"
+description = "Minimal Quill test client: exercises every server feature from the command line."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "plait"
+path = "src/main.rs"
+
+[dependencies]
+plait-certs.workspace = true
+plait-core.workspace = true
+plait-proto.workspace = true
+
+anyhow.workspace = true
+clap.workspace = true
+rpassword.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+plait-e2e = { path = "../plait-e2e" }
+serde_json.workspace = true
+tempfile = "3"
+tokio.workspace = true
+
+[lints]
+workspace = true
