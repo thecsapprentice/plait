@@ -653,10 +653,10 @@ fn errors_print_their_codes() {
     assert!(ok, "{err}");
     // Wrong passphrase: the store's code.
     let (ok, _, err) = plait(dir.path(), "not the passphrase at all", &["server"]);
-    assert!(!ok && err.starts_with("error Q-1356: "), "{err}");
+    assert!(!ok && err.starts_with("error P-1356: "), "{err}");
     // Not signed in: core's code.
     let (ok, _, err) = plait(dir.path(), PASSPHRASE, &["persona", "list"]);
-    assert!(!ok && err.starts_with("error Q-1150: "), "{err}");
+    assert!(!ok && err.starts_with("error P-1150: "), "{err}");
     // Something the CLI can't use: its own code.
     let (ok, _, err) = plait(
         dir.path(),
@@ -669,5 +669,5 @@ fn errors_print_their_codes() {
             "ink",
         ],
     );
-    assert!(!ok && err.starts_with("error Q-9050: "), "{err}");
+    assert!(!ok && err.starts_with("error P-9050: "), "{err}");
 }

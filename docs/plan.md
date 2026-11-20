@@ -924,8 +924,9 @@ Every problem the server or a client can show has a stable code, `Q-AACC`: `AA` 
 - **Who decides, by range.** In each area, 01–49 are the server's refusals and 50–99 are what a client decides (it couldn't reach the server, this computer's store refused, a check on received keys failed). So a code says where to look as well as what happened.
 - **One code per case.** The server sets the code at each place it refuses something, and sends it as a `code` member of its problem+json reply. The same case in several places shares a code. Input checks (`ValidationError`) carry one code per kind, the same from the server and a client.
 - **Core.** `CoreError::code()` gives the server's code for its refusals (or, from a server older than #76, the code its HTTP status implies), and core's own otherwise. Each core module's error helper gives its area's "a check failed" code, and the cases people see get codes of their own (a pitch too long, a link expired, a changed key).
-- **Shown.** The CLI prints `error Q-3001: …` for every error, its own usage errors included (`Q-9050`). The desktop app shows codes only in advanced mode, beside the words; the default view stays plain.
-- **Stable.** A code never changes meaning. A retired code is listed in `RETIRED` and never reused. Something with no code of its own yet is `Q-9950`, with the detail in advanced mode, so it can still be reported.
+- **Shown.** The CLI prints `error P-3001: …` for every error, its own usage errors included (`P-9050`). The desktop app shows codes only in advanced mode, beside the words; the default view stays plain.
+- **Prefix.** Codes were shown as `Q-3009` until the rebrand changed the prefix to `P-` (R3, #84, 2026-11-20). Only the shown prefix changed: the number is what clients and logs key on, and nothing had been released.
+- **Stable.** A code never changes meaning. A retired code is listed in `RETIRED` and never reused. Something with no code of its own yet is `P-9950`, with the detail in advanced mode, so it can still be reported.
 
 ### Testing the desktop app
 

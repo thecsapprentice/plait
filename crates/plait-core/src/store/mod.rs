@@ -86,7 +86,7 @@ pub enum StoreError {
 }
 
 impl StoreError {
-    /// Its error code (Q-13xx, `docs/error-codes.md`).
+    /// Its error code (P-13xx, `docs/error-codes.md`).
     pub fn code(&self) -> plait_proto::codes::ErrorCode {
         use plait_proto::codes::*;
         match self {

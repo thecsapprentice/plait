@@ -221,7 +221,7 @@ pub struct Problem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     /// The error code (`plait_proto::codes`, `docs/error-codes.md`): `3009`
-    /// is shown as `Q-3009`. Absent from servers older than #76.
+    /// is shown as `P-3009`. Absent from servers older than #76.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<u16>,
 }

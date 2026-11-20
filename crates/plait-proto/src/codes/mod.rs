@@ -1,5 +1,5 @@
 //! Error codes (#76): every problem the server or a client can show has
-//! one, written `Q-3009`. The first two digits name the area and the last
+//! one, written `P-3009`. The first two digits name the area and the last
 //! two the case. In each area, 01–49 are the server's refusals and 50–99
 //! are what a client decides itself. `docs/error-codes.md` is generated
 //! from this registry; codes never change meaning, and retired ones are
@@ -9,13 +9,13 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// One error code. Serialized as its number; shown as `Q-3009`.
+/// One error code. Serialized as its number; shown as `P-3009`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ErrorCode(pub u16);
 
 impl ErrorCode {
-    /// The area's number: `30` for `Q-3009`.
+    /// The area's number: `30` for `P-3009`.
     pub fn area(self) -> u16 {
         self.0 / 100
     }
@@ -28,7 +28,7 @@ impl ErrorCode {
 
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Q-{:04}", self.0)
+        write!(f, "P-{:04}", self.0)
     }
 }
 
@@ -118,7 +118,7 @@ pub fn document() -> String {
             continue;
         }
         out.push_str(&format!(
-            "\n## Q-{area}xx: {name}\n\n| Code | Name | Meaning |\n| --- | --- | --- |\n"
+            "\n## P-{area}xx: {name}\n\n| Code | Name | Meaning |\n| --- | --- | --- |\n"
         ));
         for e in mine {
             out.push_str(&format!(
@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn codes_read_as_q_and_four_digits() {
-        assert_eq!(ErrorCode(3009).to_string(), "Q-3009");
+        assert_eq!(ErrorCode(3009).to_string(), "P-3009");
         assert_eq!(serde_json::to_string(&ErrorCode(3009)).unwrap(), "3009");
     }
 
