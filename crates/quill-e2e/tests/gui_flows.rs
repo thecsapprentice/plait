@@ -641,6 +641,77 @@ async fn requests_both_ways_on_a_real_server() {
     );
     assert_eq!(answer.content, "And the bell rang twice.");
     assert_eq!(answer.in_reply_to.as_deref(), Some(asked.id.as_str()));
+    let answer_at = answer.seq;
+
+    // Changing notes (3f-3): an edit undone, a delete undone (#104).
+    d.click("Edit your note").await;
+    d.type_into(&format!("edit-{answer_at}"), "And the bell rang thrice.")
+        .await;
+    d.click("Save the change").await;
+    d.wait_for_text("Edited.").await;
+    d.click("Undo").await;
+    d.wait_for_text("Undone.").await;
+    d.click("Edit your note").await;
+    d.click("Delete this note").await;
+    d.wait_for_text("It stays in its history for you both.")
+        .await;
+    d.click("Undo").await;
+    d.wait_for_text("Undone.").await;
+    let back = quill_core::sessions::versions(&wren, &wren_c, &session, answer_at)
+        .await
+        .unwrap();
+    assert_eq!(
+        (back.content.as_str(), back.deleted),
+        ("And the bell rang twice.", false)
+    );
+    assert_eq!(
+        back.versions
+            .iter()
+            .map(|v| v.content.is_some())
+            .collect::<Vec<_>>(),
+        [true, true, true, false, true],
+        "written, edited, undone, deleted, restored"
+    );
+
+    // A channel named as typed, seen by Wren.
+    d.click("New channel").await;
+    d.type_into("channel-name", "World building").await;
+    d.type_into("channel-about", "Places and weather.").await;
+    d.click("Make the channel").await;
+    d.wait_for_text("Nothing in World building yet.").await;
+    let channels = quill_core::sessions::channels(&wren, &wren_c, &session)
+        .await
+        .unwrap();
+    assert!(
+        channels
+            .iter()
+            .any(|c| c.name == "world-building"
+                && c.summary.as_deref() == Some("Places and weather.")),
+        "{channels:?}"
+    );
+
+    // Safety numbers: the same words on both sides, and "They match".
+    d.click("Compare safety numbers").await;
+    d.wait_for_text("Your 12 words with @wren_pen").await;
+    let hers = quill_core::sessions::safety_numbers(&wren, &wren_c, &session)
+        .await
+        .unwrap();
+    let text = d.text();
+    assert!(
+        text.contains(&hers.identity.join(" ")),
+        "{:?} in {text}",
+        hers.identity
+    );
+    assert!(
+        text.contains(&hers.check.join(" ")),
+        "{:?} in {text}",
+        hers.check
+    );
+    d.click("They match").await;
+    d.wait_for_text("You marked @wren_pen verified on this computer.")
+        .await;
+    d.click("Hide the safety numbers").await;
+    d.wait_for_text("Verified on this computer").await;
     d.click("Home").await;
 
     // Answering: Wren asks on Ink's prompt, live, and Ink accepts.
@@ -681,5 +752,17 @@ async fn requests_both_ways_on_a_real_server() {
     // Accepting leads to that session, not the other one with @wren_pen.
     d.click("Open the session").await;
     d.wait_for_text("On “The night porter”.").await;
+
+    // Leaving it (3f-3) ends it for both, and it stays readable.
+    d.click("Leave the session…").await;
+    d.click("Leave it").await;
+    d.wait_for_text("This session has ended.").await;
+    let ended = quill_core::sessions::list(&wren, &wren_c)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|l| l.session.ended)
+        .count();
+    assert_eq!(ended, 1, "the night porter's session, for Wren too");
     server.stop().await.unwrap();
 }

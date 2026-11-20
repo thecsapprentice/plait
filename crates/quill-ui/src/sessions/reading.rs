@@ -9,13 +9,18 @@ use dioxus::prelude::*;
 use quill_board_ui::short_date;
 
 use super::{
+    changing::{ChangeLine, History, Last, NoteEditor},
+    channels::{ChannelForm, Naming},
     compose::{Composer, WaitingNote},
-    reload, standing_line,
+    reload,
+    safety::SafetyPanel,
+    standing_line, tab_label,
 };
 use crate::{
     app::{ProblemLine, use_ui},
-    backend::{Note, Problem, QueuedNote, SessionView},
+    backend::{Note, Problem, QueuedNote, SessionView, Verification},
     markdown::{Markdown, plain_text},
+    requests::KeyCheck,
 };
 
 /// When a note was written, in this computer's time zone: "Nov 2, 2026,
@@ -23,15 +28,6 @@ use crate::{
 pub(crate) fn when(offset: time::UtcOffset, at: time::OffsetDateTime) -> String {
     let at = at.to_offset(offset);
     format!("{}, {:02}:{:02}", short_date(at), at.hour(), at.minute())
-}
-
-/// A channel's name as a tab: "Story", "Planning", or as named.
-pub(crate) fn tab_label(name: &str) -> String {
-    let mut c = name.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().chain(c).collect(),
-        None => String::new(),
-    }
 }
 
 #[component]
@@ -54,6 +50,15 @@ pub fn SessionPage(id: String) -> Element {
     // Bumped when drafts or waiting notes change here; they're read from
     // this computer, apart from the session (so they show offline too).
     let here = use_signal(|| 0u64);
+    // A channel being named or described, in a form above the notes.
+    let mut naming = use_signal(|| None::<Naming>);
+    // The safety numbers, opened from the heading; and a changed key being
+    // checked from the notice that says so.
+    let mut safety = use_signal(|| false);
+    let mut checking = use_signal(|| false);
+    // Leaving, asked once in place; and why it didn't go, if it didn't.
+    let mut leaving = use_signal(|| false);
+    let mut leave_problem = use_signal(|| None::<Problem>);
     // Focus mode is for this session's editor: leaving the session ends it.
     use_drop(move || model.write().sessions.focus = false);
 
@@ -225,6 +230,27 @@ pub fn SessionPage(id: String) -> Element {
         names.get(to).cloned()
     };
     let with = s.partner.as_ref().map(|p| p.name()).unwrap_or_default();
+    let b = backend.clone();
+    let sid = id.clone();
+    let leave = move |_| {
+        let (b, sid) = (b.clone(), sid.clone());
+        spawn(async move {
+            match b.leave_session(&sid).await {
+                Ok(()) => {
+                    leaving.set(false);
+                    leave_problem.set(None);
+                    reload(b, model);
+                }
+                Err(p) => leave_problem.set(Some(p)),
+            }
+        });
+    };
+    let as_persona = model
+        .read()
+        .personas()
+        .iter()
+        .find(|p| p.persona.handle == s.me.handle)
+        .map(|p| p.persona.id);
     rsx! {
         div { class: "session-head",
         {back}
@@ -232,9 +258,78 @@ pub fn SessionPage(id: String) -> Element {
         if let Some((_, t)) = &s.prompt {
             p { class: "lede", "On “{t}”." }
         }
+        // Once it ends, the session's keys are gone: nothing to compare.
+        if let Some(p) = s.partner.clone().filter(|_| !s.ended) {
+            if v.verification == Verification::KeyChanged {
+                div { class: "notice", role: "alert",
+                    p {
+                        "@{p.handle}'s identity key changed since you compared safety numbers. "
+                        "Usually that's because they started over on a new computer; it could also be someone passing as them."
+                    }
+                    if checking() {
+                        if let Some(persona) = as_persona {
+                            KeyCheck {
+                                handle: p.handle.clone(),
+                                as_persona: persona,
+                                on_done: move |_| {
+                                    checking.set(false);
+                                    reload(backend.clone(), model);
+                                },
+                            }
+                        }
+                    } else {
+                        div { class: "actions",
+                            button { class: "secondary", onclick: move |_| checking.set(true), "Check the new key" }
+                        }
+                    }
+                }
+            } else if safety() {
+                SafetyPanel {
+                    id: id.clone(),
+                    handle: p.handle.clone(),
+                    as_persona,
+                    on_close: move |()| safety.set(false),
+                }
+            } else {
+                p { class: "verification",
+                    if v.verification == Verification::Verified {
+                        span { class: "verified", "✓ Verified on this computer" }
+                        " "
+                        button { class: "link", onclick: move |_| safety.set(true), "Safety numbers" }
+                    } else {
+                        button { class: "link", onclick: move |_| safety.set(true), "Compare safety numbers" }
+                    }
+                }
+            }
+        }
         if s.ended {
             div { class: "notice", role: "status",
                 "This session has ended. What's written stays readable here."
+            }
+        } else if leaving() {
+            div { class: "notice", role: "alert",
+                p {
+                    "Leave your session with {with}? It ends for both of you: neither of you can write in it again. "
+                    "What's written stays readable here."
+                }
+                if let Some(p) = leave_problem() {
+                    ProblemLine { problem: p }
+                }
+                div { class: "actions",
+                    button { class: "danger", onclick: leave, "Leave it" }
+                    button {
+                        class: "quiet",
+                        onclick: move |_| {
+                            leaving.set(false);
+                            leave_problem.set(None);
+                        },
+                        "Stay"
+                    }
+                }
+            }
+        } else {
+            p { class: "session-actions",
+                button { class: "quiet", onclick: move |_| leaving.set(true), "Leave the session…" }
             }
         }
         if v.held_back {
@@ -252,6 +347,7 @@ pub fn SessionPage(id: String) -> Element {
             }
         }
         div { class: "session-body",
+            div { class: "channel-list",
             div {
                 class: "channels",
                 id: "channels",
@@ -314,9 +410,47 @@ pub fn SessionPage(id: String) -> Element {
                     }
                 }
             }
+            if can_write {
+                button {
+                    class: "quiet new-channel",
+                    onclick: move |_| naming.set(Some(Naming::New)),
+                    "New channel"
+                }
+            }
+            }
             section { class: "channel", role: "tabpanel", aria_label: "{tab_label(&current)}",
-                if let Some(d) = summary {
-                    p { class: "hint", "{d}" }
+                if let Some(form) = naming() {
+                    ChannelForm {
+                        key: "{form:?}",
+                        id: id.clone(),
+                        naming: form,
+                        taken: v.channels.iter().map(|c| c.name.clone()).collect::<Vec<_>>(),
+                        on_done: move |to: Option<String>| {
+                            naming.set(None);
+                            if let Some(to) = to {
+                                channel.set(to);
+                            }
+                        },
+                    }
+                } else if summary.is_some() || can_write {
+                    div { class: "channel-about",
+                        if let Some(d) = summary.clone() {
+                            p { class: "hint", "{d}" }
+                        }
+                        if can_write {
+                            button {
+                                class: "link",
+                                onclick: {
+                                    let (name, about) = (current.clone(), summary.clone());
+                                    move |_| naming.set(Some(Naming::Describe {
+                                        name: name.clone(),
+                                        about: about.clone(),
+                                    }))
+                                },
+                                if summary.is_some() { "Change the description" } else { "Describe this channel" }
+                            }
+                        }
+                    }
                 }
                 if shown.is_empty() {
                     p { class: "coming", "Nothing in {tab_label(&current)} yet." }
@@ -325,6 +459,7 @@ pub fn SessionPage(id: String) -> Element {
                         for n in shown {
                             NoteItem {
                                 key: "{n.seq}",
+                                id: id.clone(),
                                 answering: n.reply_to.and_then(|r| firsts.get(&r).cloned().map(|f| (r, f))),
                                 when: when(offset, n.at),
                                 on_mounted: move |(seq, el): (u64, Rc<MountedData>)| {
@@ -340,6 +475,7 @@ pub fn SessionPage(id: String) -> Element {
                                     }
                                 },
                                 can_answer: can_write,
+                                can_change: can_write,
                                 on_reply: move |seq: u64| {
                                     answering.set(Some(seq));
                                     *focus_editor.write() += 1;
@@ -394,6 +530,8 @@ fn first_line(text: &str) -> String {
 
 #[component]
 fn NoteItem(
+    /// The session's id.
+    id: String,
     n: Note,
     when: String,
     /// The note it answers: its number, channel and first line.
@@ -402,8 +540,13 @@ fn NoteItem(
     on_answer: EventHandler<(u64, String)>,
     /// Whether the writer can answer it (the session is still going).
     can_answer: bool,
+    /// Whether the writer can change their notes (the same).
+    can_change: bool,
     on_reply: EventHandler<u64>,
 ) -> Element {
+    let mut editing = use_signal(|| false);
+    let mut last = use_signal(|| None::<Last>);
+    let mut history = use_signal(|| false);
     let author = if n.mine {
         "your".to_owned()
     } else {
@@ -419,7 +562,25 @@ fn NoteItem(
                 span { class: "name", if n.mine { "You" } else { "{n.author.name()}" } }
                 span { class: "hint", " {when}" }
                 if n.edited && !n.deleted {
-                    span { class: "tag", "Edited" }
+                    button {
+                        class: "tag tag-button",
+                        aria_expanded: if history() { "true" } else { "false" },
+                        onclick: move |_| history.toggle(),
+                        "Edited"
+                    }
+                }
+                span { class: "note-actions",
+                if n.mine && can_change && !n.deleted && !editing() {
+                    button {
+                        class: "quiet note-action",
+                        aria_label: "Edit your note",
+                        title: "Edit",
+                        onclick: move |_| {
+                            last.set(None);
+                            editing.set(true);
+                        },
+                        span { aria_hidden: "true", "✎" }
+                    }
                 }
                 if can_answer && !n.deleted {
                     button {
@@ -429,6 +590,7 @@ fn NoteItem(
                         onclick: move |_| on_reply.call(seq),
                         span { aria_hidden: "true", "↩" }
                     }
+                }
                 }
             }
             if let Some((to, (ch, first))) = answering {
@@ -441,10 +603,34 @@ fn NoteItem(
                     "{first}"
                 }
             }
-            if n.deleted {
-                p { class: "hint", "This note was deleted." }
+            if editing() && !n.deleted {
+                NoteEditor {
+                    id: id.clone(),
+                    seq,
+                    content: n.content.clone(),
+                    on_done: move |change: Option<Last>| {
+                        editing.set(false);
+                        if change.is_some() {
+                            last.set(change);
+                        }
+                    },
+                }
+            } else if n.deleted {
+                p { class: "hint",
+                    "This note was deleted. "
+                    button {
+                        class: "link",
+                        aria_expanded: if history() { "true" } else { "false" },
+                        onclick: move |_| history.toggle(),
+                        if history() { "Hide its history" } else { "Show its history" }
+                    }
+                }
             } else {
                 div { class: "pitch", Markdown { source: n.content.clone() } }
+            }
+            ChangeLine { id: id.clone(), seq, last }
+            if history() {
+                History { id: id.clone(), seq, stamp: format!("{}{}{}", n.deleted, n.edited, n.content) }
             }
             if n.attachments > 0 {
                 p { class: "hint",

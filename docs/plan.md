@@ -628,6 +628,220 @@ Dioxus desktop runs the app in native Rust and sends DOM changes to the webview,
 - **What it doesn't protect against.** The traffic is plain `ws://` on loopback. Anything able to watch loopback traffic or read the app's memory (an administrator, or malware running as the user) can read what's on screen anyway; that's outside the threat model for any local client.
 - **TLS that isn't used.** The WebSocket library is built with `native-tls`, which means OpenSSL on Linux, although the channel never uses TLS. `deny.toml` allows OpenSSL only through that path; the rest of the project stays OpenSSL-free. Drop the exception if Dioxus makes the TLS feature optional.
 
+### Text input in the webview (3a findings)
+
+What the 3a spike (`spikes/gui/`, removed in 3f-3) found, and what is still to check. The code refers to these as "finding N". The checks so far ran on
+**Linux: WebKitGTK 2.52 through wry 0.53 (Dioxus 0.7.10), under a virtual
+X server with software rendering**, driven by scripted keystrokes and
+clicks (`xdotool`), with screenshots. That setup is slower than a real
+desktop with a GPU, so its timings are a worst case. Windows, macOS, the
+browsers, input methods and screen readers need a person at the machine;
+they're listed at the end.
+
+#### Summary
+
+- Dioxus works for this view on the desktop, once the editor follows two
+  rules below (uncontrolled text, remounting through a one-item list).
+- **Live** (the Markdown styled in place, behind a transparent text area)
+  is the best editor form found: typing, the caret, selection and
+  spellcheck are the platform's own, and the formatting shows as you type.
+  It costs a 20-line script to keep the caret in view, and styles that
+  don't change character widths.
+- **Write + preview** stays as the fallback and for very long notes.
+- **Rich** (`contenteditable`) is not worth pursuing: it rewrites the
+  writer's Markdown and needs the most JavaScript.
+- Spellcheck works everywhere checked, but WebKitGTK needs it switched on.
+- Decision (2026-10-23): keep Dioxus, with Live as the editor and
+  Write + preview as the fallback. The hand checks not yet done move into
+  the sub-phases that build each part (roadmap, 3a "As built").
+
+#### What was found
+
+##### 1. A controlled text area loses keystrokes on the desktop
+
+With the text area's `value` bound to the draft (the usual pattern), typing
+a sentence at 15 ms per key lost about a third of the characters:
+`## A heading with **bold**` arrived as `##A hedngwih **bld**`. Each
+keystroke goes to Rust over IPC and the re-render writes back a value that
+is already out of date, overwriting keys typed meanwhile.
+
+**Rule for 3b:** editors are uncontrolled. The text area owns its text
+while the writer types; Rust reads it from `input` events and replaces it
+only when the app changes it (sending, switching channels, a shortcut
+wrapping the selection) by remounting the text area with the new text as
+`initial_value`. With that, no keystroke was lost in any test, including
+typing ahead of a slow re-render.
+
+##### 2. `key` on a lone element doesn't remount it
+
+Dioxus 0.7 only honours `key` in lists. A text area with a changing `key`
+kept its old text. Wrapping it in a list of one (`for k in [key] { textarea
+{ key: "{k}", … } }`) remounts it when the key changes.
+
+##### 3. Live preview in place works, within limits
+
+A transparent text area is drawn over a "mirror" holding the same text,
+styled. Because the platform still owns the text area, the caret,
+selection, spellcheck underlines and input methods all behave natively, and
+everything lines up as long as no style changes a character's width:
+
+- Bold is a faint text shadow, not a heavier weight; emphasis is a colour,
+  not italics; headings are coloured, not larger; marks (`**`, `#`, `>`)
+  are dimmed, not hidden.
+- So while typing, a heading isn't bigger and italics aren't slanted; the
+  sent note shows them properly.
+- The text area grows with the text inside a scrolling box, which browsers
+  don't scroll to follow the caret; a small script does (it runs on the
+  document, so it survives remounts).
+- The mirror is one block per line, so typing re-lays out one line rather
+  than the note. This doubled throughput on a long note (finding 5).
+
+![Live](images/3a/live-wide.png)
+
+##### 4. Rich editing rewrites the writer's Markdown
+
+`contenteditable` works: Ctrl+B and Ctrl+I are native, spellcheck works,
+the caret is kept (once its starting HTML stops following the draft). But
+the HTML has to be turned back into Markdown on every keystroke, which:
+
+- normalizes what the writer typed (spacing, which marks are used) and
+  drops anything outside the few tags it handles: a 20,000-word draft lost
+  400 characters of trailing spaces in one round trip;
+- sends the editor's whole HTML from the webview to Rust on each key;
+- leans on `document.execCommand`, deprecated in browsers.
+
+Not recommended.
+
+![Rich](images/3a/rich.png)
+
+##### 5. Typing speed
+
+Typing 50 characters at 30 ms each (33 a second, faster than anyone
+types), release build. "Kept up" means every character was in the draft
+1 second after the last key; "trails" is how long after a keystroke the
+screen showed it (median, worst).
+
+| Editor | Short note | End of a 20,000-word note |
+| --- | --- | --- |
+| Write + preview, preview hidden | kept up; 4 ms, 21 ms | kept up; 13 ms, 45 ms |
+| Write + preview, preview shown | kept up; 8 ms, 24 ms | fell behind (23 of 50 after 1 s), caught up later |
+| Live | kept up; 9 ms, 24 ms | fell behind (13 of 50 after 1 s), caught up later |
+| Rich | kept up (its own edits, so no delay to measure) | fell behind, caught up later |
+
+No characters were lost in any case. For notes of ordinary length every
+form keeps up. With a whole novella in one note, everything but the plain
+text area falls behind in this software-rendered setup; most of the time is
+the webview laying out two copies of 100,000 characters. For 3f:
+re-render the preview at most a few times a second instead of per
+keystroke, and measure Live again on real hardware; if it still trails
+past some length, switch to the plain text area for that note.
+
+##### 6. Spellcheck
+
+- **WebKitGTK (Linux):** off unless the app asks. Switching it on through
+  WebKitGTK's own API (`set_spell_checking_enabled`, with the language from
+  `LANG`) works, including in Live, where the underlines come from the
+  transparent text area and line up with the styled text:
+  ![Spellcheck on Linux](images/3a/spellcheck-linux.png)
+  It needs a Hunspell dictionary installed, which desktop distributions
+  have.
+- WebView2 and WKWebView: to check (expected on by default).
+
+##### 7. Layout
+
+Media and container queries work: one column below 760 px with channels as
+a row of tabs, preview beside the text area when the composer is wider than
+44 rem, and a focus mode with only the editor. Under the virtual X server,
+WebKitGTK sometimes didn't restyle after a resize until the next change;
+check on a real Linux desktop.
+
+| Narrow | Write + preview | Focus |
+| --- | --- | --- |
+| ![Narrow](images/3a/narrow.png) | ![Preview](images/3a/preview.png) | ![Focus](images/3a/focus.png) |
+
+##### 8. Other notes for 3b
+
+- Sizes of the release builds (size-optimized, LTO), from the "GUI spike"
+  workflow: the desktop binary is 4.9 MB on Windows, 5.6 MB on macOS and
+  6.6 MB on Linux (each uses the system's webview, so that's all of it);
+  the WebAssembly module is 1.9 MB, 0.59 MB gzipped, before `wasm-opt`.
+- All four builds pass in CI: Dioxus 0.7.10 builds unchanged for Windows,
+  macOS, Linux and the browser.
+- Small JavaScript is needed for a few things: reading the selection for
+  shortcuts, keeping the caret in view, scrolling the notes. All UI glue,
+  no protocol logic, as the web client's requirements allow.
+- Files: `HasFileData` must be imported for `.files()` on drop events.
+- Sanitizing rendered notes with `ammonia` is fine per note, too slow to
+  run on a whole long draft per keystroke (finding 5).
+
+##### 9. Browsers add their own writing suggestions
+
+In Edge (checked by hand, 2026-10-23), the text areas showed suggestions
+as you type: Edge's text prediction. The desktop app (WebView2) doesn't.
+Beyond getting in a writer's way, a browser's writing assistant may
+process what's typed on its maker's servers, depending on the browser and
+its settings, which a client built so the server never sees plaintext must
+not invite. The editors now set `writingsuggestions="false"` (Chromium
+and Edge honour it) and `autocomplete="off"`. Spellcheck stays on: the
+basic spellcheckers work on the device, though Chrome's optional
+"enhanced spell check" sends text to Google. The web client proposal (4a)
+should say what the web client turns off and what it tells writers about
+the rest.
+
+##### 10. Lists in the preview, in Edge
+
+In Edge, lists in the Write + preview pane were indented but had no
+markers. That didn't reproduce in WebKitGTK or in Chromium given the same
+HTML and styles, so the cause isn't known yet. The note styles now set
+list markers outright (`list-style`, `display: list-item`) so nothing on
+the page can reset them; to check again in Edge.
+
+#### In the app (3f-2)
+
+The editor as built in `quill-ui` (3f-2), checked on **Linux: WebKitGTK 2.52
+under Xvfb with software rendering**, 2026-11-19, against a seeded dev
+server:
+
+- Live keeps every keystroke, and selections line up with the styled text,
+  after code spans and links too. A first try didn't: the mirror's `code`
+  span took the app's own `.code` style (smaller, monospace) and drifted.
+  The mirror's classes are now its own (`md-*`).
+- Spellcheck underlines show in Live, where they line up with the styled
+  text, and in Write and preview.
+- Ctrl+B and Ctrl+I wrap the selection and keep it selected; Ctrl+Enter
+  sends. Keeping the selection needed the text area's own mount event:
+  a script run straight after remounting found the old one.
+- Drafts come back after the app closes and opens. A note written while
+  the server is down waits, and goes once it's back.
+- Narrow: one column with the channels above. Started narrow it's right
+  away; resized narrow, the restyle caveat in finding 7 still applies
+  under Xvfb.
+
+#### Still to check, by hand
+
+The spike itself was removed in 3f-3; check with the app
+(`scripts/dev-gui.py`). Record results here, with who checked and on
+what. The rows still empty are tracked in #105.
+
+- **Windows desktop (WebView2), checked by hand 2026-10-23:** everything
+  tried behaved as expected.
+- **Edge, checked by hand 2026-10-23:** writing suggestions appeared
+  (finding 9, now turned off) and preview lists lacked markers (finding
+  10); both to check again.
+
+| Check | Windows (WebView2) | macOS (WKWebView) | Linux desktop | Chrome | Firefox | Safari |
+| --- | --- | --- | --- | --- | --- | --- |
+| Builds (CI) and runs | yes | builds | yes (Xvfb) | builds | | |
+| Spellcheck in each editor form | | | yes (after switching on); app, 3f-2: Live and Write and preview | | | |
+| Input methods: Japanese or Chinese, accents and dead keys, the emoji picker; nothing lost or doubled, in Live especially | | | | | | |
+| Screen reader: notes read, the editor named, everything reachable by keyboard | Narrator or NVDA | VoiceOver | Orca | | | |
+| Resizing narrow to wide | | | yes, with the restyle caveat | | | |
+| Typing at the end of the long draft feels smooth | | | software rendering: see 5 | | | |
+| The app's editor (3f-2) at its 20,000-character limit: Live throughout (the writer chooses Write and preview); typing keeps up | | | | | | |
+| Preview list markers in the app's Write and preview (finding 10) | | | | | | |
+| Adding an image by button and by dropping | | | | | | |
+| Look and colours, light and dark | | | light only | | | |
+
 ### How the desktop app is built (3b)
 
 - **Three layers.** `quill-gui`'s `NativeBackend` does the work: stores, the keychain, and `quill-core` on its own Tokio runtime, so the window never waits on it. `quill-ui` holds the views and an app model. The two meet only at the `Backend` trait, whose errors are already in plain words (`Problem`); raw errors show only in advanced mode. The web client will supply its own `Backend`.
@@ -693,6 +907,15 @@ Dioxus desktop runs the app in native Rust and sends DOM changes to the webview,
 - **A session page has room.** Pages centre in a wide window. The editor at its widest is `--width-write` (62.5rem), and an open session's page fits the channel list and that. Write and preview never gives up editing room: when the window has space, the composer and page widen (`:has(.split)`) so each box is as wide as Live's, and in focus mode as wide as focus mode's (`--width-focus`). Toggling it re-centres the page on a very wide window. Notes keep their reading width. Its text area grows with its text up to Live's height by the webview's own sizing (`field-sizing: content`), not a mirror, so typing costs what it did; a webview without it leaves the text area draggable.
 - **Answering is an arrow.** Each note's Answer button shows ↩, named "Answer <author>'s note" for screen readers. The same mark leads the line naming the note being answered, with "In answer to" kept for screen readers.
 - **Focus mode** hides the side bar and everything on the session page except the editor, centred, with a line saying where it writes. Esc, "Leave focus" or leaving the session ends it. It sets its own grid rows, so on a narrow window the status bar stays one line.
+
+### Changing notes, channels, safety numbers and leaving (3f-3)
+
+- **Changes are undone, not confirmed.** Your note's ✎ opens it in place (Save the change, Cancel, Delete this note; Ctrl+Enter and Esc). Nothing asks first. What was done shows under the note with Undo: undoing an edit sends the words before it as a new edit, and undoing a delete restores the note (#104, "Full edit history" above). Only the last change on the page can be undone, and only while the page is open; after that the note's history still has every version. Edits and deletes go straight to the server rather than through the outbox: offline, the editor keeps the words and says so.
+- **A delete is described honestly.** The note says it was deleted and that it "stays in its history for you both", with "Show its history". Nothing a delete hides was erased.
+- **Channels are named as typed.** "World building" becomes `world-building` (lower case, spaces and underscores as single hyphens; `checks::channel_name`), and tabs show hyphens as spaces. The hint says what the tab will say, or why a name can't be used (taken, too long, other characters). Story and Planning can be described like any other channel.
+- **Safety numbers are offered, never required.** Under the session's heading, "Compare safety numbers" shows the 12 identity words (the same as in requests and on Personas) and the 6 for the session's keys now; "They match" marks the other writer verified on this computer (core's `confirm_verified`). The heading then says so. Nothing waits on it: writing works either way. Once the session ends its keys are gone, so it isn't offered then.
+- **A verified writer's changed key is said plainly.** A session read checks the other writer's published key against the pin, but only when they're verified, so unverified sessions cost no extra request. If it changed, the heading says so and opens the same check as requests (3e, `KeyCheck`); trusting the new key leaves them unverified until compared again. Without a live notice for key changes, this shows the next time the session is read (opened, or a note arriving). A key changed before comparing is checked before the words are shown.
+- **Leaving asks once, in place.** It ends the session for both writers. The server keeps both as members and doesn't say who left, so the app says only that the session ended (Sim was changed to match: it used to drop the leaver and say "The other writer left").
 
 ### Error codes (#76)
 
@@ -799,7 +1022,7 @@ Each phase is split into sub-phases, one pull request each, tracked in the [road
 * **Prompt states and requests.** Unlimited sessions per prompt. The author sets each prompt to open, busy or closed at any time; every request needs approval; ignored requests stay pending for the requester and expire after the configured window (default 30 days).
 
 - **No decision or read signals.** Declines are silent, and clients never send read receipts, typing indicators or `Read`/`View` activities.
-- **Full edit history.** `Update` and `Delete` never erase earlier versions; clients show the current state with full history on demand.
+- **Full edit history.** `Update` and `Delete` never erase earlier versions; clients show the current state with full history on demand. The last version decides the state, both when applied live and when merged from a history bundle, so an author's edit after their own delete restores the note (#104, decided 2026-11-19). That is what "Deleted. Undo" sends. Nothing a delete hides was ever erased: the partner already decrypted it, keeps it in the note's history, and could ignore the delete with a modified client.
 - **One pending request per account per prompt**, across personas, enforced by the requester's home server.
 - **Web clients link as limited devices by default**, with an opt-in to full.
 

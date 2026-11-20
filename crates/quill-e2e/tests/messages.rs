@@ -126,6 +126,43 @@ async fn edits_and_deletions_keep_every_version_and_replies_sort_after() {
     server.stop().await.unwrap();
 }
 
+/// #104: an author restores a note they deleted; both writers see it back
+/// with every version. Only a deleted note of your own can be restored.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_author_restores_a_deleted_note() {
+    let server = server!();
+    let (id, (alice, alice_c, _), (bob, bob_c, _)) = pair(&server).await;
+    let note = sessions::write(&alice, &alice_c, &id, "Keep this.", None)
+        .await
+        .unwrap();
+    assert!(
+        sessions::restore(&alice, &alice_c, &id, note)
+            .await
+            .is_err(),
+        "not deleted"
+    );
+    sessions::delete(&alice, &alice_c, &id, note).await.unwrap();
+    assert!(
+        sessions::restore(&bob, &bob_c, &id, note).await.is_err(),
+        "not theirs"
+    );
+    sessions::restore(&alice, &alice_c, &id, note)
+        .await
+        .unwrap();
+    for (s, c) in [(&alice, &alice_c), (&bob, &bob_c)] {
+        let m = sessions::versions(s, c, &id, note).await.unwrap();
+        assert_eq!((m.content.as_str(), m.deleted), ("Keep this.", false));
+        assert_eq!(
+            m.versions
+                .iter()
+                .map(|v| v.content.is_some())
+                .collect::<Vec<_>>(),
+            [true, false, true]
+        );
+    }
+    server.stop().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_withheld_message_shows_as_a_gap_and_sizes_are_padded() {
     let server = server!();

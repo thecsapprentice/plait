@@ -351,6 +351,34 @@ impl Backend for Fake {
     fn withdraw_waiting(&self, _: &str, _: Uuid) -> Result<(), Problem> {
         Ok(())
     }
+    fn note_versions<'a>(
+        &'a self,
+        _: &'a str,
+        _: u64,
+    ) -> Call<'a, Vec<crate::backend::NoteVersion>> {
+        ready(Ok(Vec::new()))
+    }
+    fn edit_note<'a>(&'a self, _: &'a str, _: u64, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn delete_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn restore_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn name_channel<'a>(&'a self, _: &'a str, _: &'a str, _: Option<&'a str>) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn leave_session<'a>(&'a self, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn safety_numbers<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        ready(Err(Problem::Gone))
+    }
+    fn confirm_verified<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        ready(Err(Problem::Gone))
+    }
     fn upkeep(&self) -> Call<'_, Option<Problem>> {
         ready(Ok(None))
     }

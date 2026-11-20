@@ -15,7 +15,7 @@ use uuid::Uuid;
 use super::{Sim, SimServer, Store, refused};
 use crate::backend::{
     Inbox, IncomingRequest, KeyChange, PITCH_MAX, Problem, REQUEST_DAYS_MAX, SentRequest, Unread,
-    WaitingPrompt, codes,
+    Verification, WaitingPrompt, codes,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +76,9 @@ impl Requests {
 #[derive(Debug, Clone, Default)]
 pub(super) struct Here {
     pins: HashMap<String, u32>,
+    /// Writers marked verified here, by the key version compared (core's
+    /// `Table::Verified`).
+    verified: HashMap<String, u32>,
     read: Vec<Uuid>,
     /// Requests sent from this computer (core's outgoing notes), whichever
     /// login sent them: this store keeps them across sign-ins.
@@ -100,7 +103,7 @@ impl Here {
 
 /// The words both writers compare: stand-ins for the identity number, from
 /// both personas' handles and key versions, the same whichever side asks.
-fn words(a: (&str, u32), b: (&str, u32)) -> Vec<String> {
+pub(super) fn words(a: (&str, u32), b: (&str, u32)) -> Vec<String> {
     const LIST: [&str; 16] = [
         "amber", "birch", "cinder", "delta", "ember", "fjord", "garnet", "harbor", "iris",
         "juniper", "kestrel", "lantern", "meadow", "nectar", "orchid", "pebble",
@@ -634,6 +637,43 @@ impl Sim {
         here.pins.insert(handle.to_owned(), now);
         self.set_here(here);
         Ok(())
+    }
+
+    /// Where this computer stands with `handle`'s key, for a session: as
+    /// core's `sessions::verified` and a pin check.
+    pub(super) fn verification(&self, server: &SimServer, handle: &str) -> Verification {
+        let here = self.here();
+        match (here.verified.get(handle), here.pins.get(handle)) {
+            (Some(v), Some(p)) if v == p => {
+                if server.requests.version(handle) == *p {
+                    Verification::Verified
+                } else {
+                    Verification::KeyChanged
+                }
+            }
+            _ => Verification::Unverified,
+        }
+    }
+
+    /// The 12 words with `partner` as `me`, checking (and first pinning)
+    /// their key as `sessions::safety_numbers` does; `verify` marks them
+    /// verified. Returns the words and whether they're verified.
+    pub(super) fn sim_identity_check(
+        &self,
+        me: &str,
+        partner: &str,
+        verify: bool,
+    ) -> Result<(Vec<String>, bool), Problem> {
+        let (_, _, server) = self.reach()?;
+        let mut here = self.here();
+        here.check(&server, partner)?;
+        let now = server.requests.version(partner);
+        if verify {
+            here.verified.insert(partner.to_owned(), now);
+        }
+        let verified = here.verified.get(partner) == Some(&now);
+        self.set_here(here);
+        Ok((server.pair_words(me, partner), verified))
     }
 
     fn here(&self) -> Here {

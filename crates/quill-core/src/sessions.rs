@@ -1658,6 +1658,24 @@ pub async fn delete(store: &Store, client: &Client, id: &str, at: u64) -> Result
     .await
 }
 
+/// Restores message `at` after its author deleted it: its last text is
+/// sent again as a new edit, and every version is kept (#104).
+pub async fn restore(store: &Store, client: &Client, id: &str, at: u64) -> Result<u64, CoreError> {
+    let r = ready(store, client, id).await?;
+    let m = history::message(store, &r.gid, at)?
+        .ok_or_else(|| err(format!("no message #{at} on this device")))?;
+    if m.sender != r.me.uri {
+        return Err(err("only its author can change a message"));
+    }
+    if !m.deleted {
+        return Err(err("that message isn't deleted"));
+    }
+    send(store, client, &r, &[], |hlc, n| {
+        Activity::update(&m.id, &m.content, &m.channel, hlc, n)
+    })
+    .await
+}
+
 /// Message `at` with every version, after syncing the session.
 pub async fn versions(
     store: &Store,

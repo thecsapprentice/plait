@@ -206,9 +206,10 @@ pub fn record(p: &Provider<'_>, gid: &[u8], from: From<'_>, a: &Activity) -> Res
             let Some(mut m) = get::<Message>(p, &k)? else {
                 return Ok(());
             };
-            // Only the note's own author can change it, and a deleted note
-            // stays deleted.
-            if m.sender != from.sender || m.deleted {
+            // Only the note's own author can change it. Their edit after
+            // their delete restores the note (#104); deleting twice adds
+            // nothing. This matches `merge`, where the last version decides.
+            if m.sender != from.sender || (m.deleted && a.kind == "Delete") {
                 return Ok(());
             }
             let content = if a.kind == "Update" {
@@ -225,7 +226,10 @@ pub fn record(p: &Provider<'_>, gid: &[u8], from: From<'_>, a: &Activity) -> Res
                 content: content.clone(),
             });
             match content {
-                Some(text) => m.content = text,
+                Some(text) => {
+                    m.content = text;
+                    m.deleted = false;
+                }
                 None => m.deleted = true,
             }
             put(p, &k, &m)
@@ -695,7 +699,8 @@ mod tests {
         assert!(m.edited() && !m.deleted);
         assert_eq!(m.versions.len(), 2);
 
-        // Alice deletes it: hidden, history kept, and it stays deleted.
+        // Alice deletes it: hidden, history kept. Deleting again or Bob
+        // editing it changes nothing.
         rec(
             &store,
             from(6, "alice", "A"),
@@ -704,22 +709,43 @@ mod tests {
         rec(
             &store,
             from(7, "alice", "A"),
-            &Activity::update(first.target(), "Back?", "story", h(700), 4),
+            &Activity::delete(first.target(), "story", h(650), 4),
+        );
+        rec(
+            &store,
+            from(8, "bob", "B"),
+            &Activity::update(first.target(), "Bob's again", "story", h(660), 4),
         );
         let m = message(&store, GID, 1).unwrap().unwrap();
         assert!(m.deleted);
         assert_eq!(m.content, "Edited");
+        assert_eq!(m.versions.len(), 3);
+
+        // Her own edit restores it (#104), every version kept.
+        rec(
+            &store,
+            from(9, "alice", "A"),
+            &Activity::update(first.target(), "Back.", "story", h(700), 5),
+        );
+        let m = message(&store, GID, 1).unwrap().unwrap();
+        assert!(!m.deleted);
+        assert_eq!(m.content, "Back.");
         assert_eq!(
             m.versions
                 .iter()
                 .map(|v| v.content.clone())
                 .collect::<Vec<_>>(),
-            [Some("Second by clock".into()), Some("Edited".into()), None]
+            [
+                Some("Second by clock".into()),
+                Some("Edited".into()),
+                None,
+                Some("Back.".into())
+            ]
         );
         // A repeated note id doesn't replace the first.
         let mut copy = Activity::create("Imposter", "story", h(800), 5);
         copy.object = first.object.clone();
-        rec(&store, from(8, "alice", "A"), &copy);
+        rec(&store, from(10, "alice", "A"), &copy);
         assert_eq!(count(&store, GID).unwrap(), 2);
     }
 
@@ -812,6 +838,33 @@ mod tests {
                 missing: vec![3, 4]
             }]
         );
+    }
+
+    /// A note deleted then restored (#104) reads the same on a device that
+    /// applied it live and one that got it by history bundle.
+    #[test]
+    fn a_restored_note_agrees_live_and_by_bundle() {
+        let live = Store::in_memory();
+        let note = Activity::create("Kept.", "story", h(1), 1);
+        let log = [
+            note.clone(),
+            Activity::delete(note.target(), "story", h(2), 2),
+            Activity::update(note.target(), "Kept.", "story", h(3), 3),
+        ];
+        for (i, a) in log.iter().enumerate() {
+            rec(&live, from(i as u64 + 1, "alice", "A"), a);
+        }
+        let bundled = Store::in_memory();
+        let rows = export(&live, GID, 1, 4).unwrap();
+        Provider::new(&bundled)
+            .atomically(|p| merge(p, GID, &rows))
+            .unwrap();
+        let (a, b) = (
+            message(&live, GID, 1).unwrap().unwrap(),
+            message(&bundled, GID, 1).unwrap().unwrap(),
+        );
+        assert!(!a.deleted && a.versions.len() == 3, "{a:?}");
+        assert_eq!((a.content, a.deleted), (b.content, b.deleted));
     }
 
     #[test]

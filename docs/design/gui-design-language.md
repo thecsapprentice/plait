@@ -154,7 +154,7 @@ Single-line (`Field`), multi-line (`Area`), select, checkbox, radio, and segment
 - **Two fields in a row** (`.field-row`) become one column on narrow windows.
 - **Choices:** checkboxes and radios sit before their label, which is clickable. A group of them is a `fieldset` with a `legend`.
 - **Segmented choices** (`.segmented`, as Any / Has / Hide) are for two to four exclusive options set in place. Each is a button with `aria-pressed`.
-- **Text input:** fields keep the spike's rules (`spikes/gui/FINDINGS.md`):
+- **Text input:** fields keep the spike's rules (`docs/plan.md`, "Text input in the webview"):
   - uncontrolled inputs with an `initial_value`;
   - remounting by key to replace the text;
   - spellcheck on for prose and off for names;

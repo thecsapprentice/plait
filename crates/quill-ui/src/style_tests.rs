@@ -237,3 +237,28 @@ fn the_plain_editor_grows_like_live() {
     assert!(rule.contains("field-sizing: content"), "{rule}");
     assert!(rule.contains("max-height: 60vh"), "{rule}");
 }
+
+/// Found by hand (3f-3): the session page's new controls crowded their
+/// neighbours (a channel's description and its form on the first note,
+/// the history's caption on the undo line) or didn't match them ("Change
+/// the description" larger than the description; "Leave the session…"
+/// indented and larger than the safety-numbers link above it).
+#[test]
+fn the_session_pages_controls_keep_their_place() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".channel-about").contains("margin-bottom"));
+    assert!(rule(".channel-form").contains("margin-bottom"));
+    assert!(rule(".channel-about .link").contains("font-size: var(--text-sm)"));
+    assert!(rule(".versions-caption").contains("margin-top"));
+    let leave = rule(".session-actions .quiet");
+    assert!(
+        leave.contains("padding: 0") && leave.contains("font-size: inherit"),
+        "{leave}"
+    );
+    assert!(rule(".session-actions").contains("font-size: var(--text-sm)"));
+}

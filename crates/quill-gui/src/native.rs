@@ -33,7 +33,9 @@ use quill_ui::backend::{
     ChannelView, Inbox, IncomingRequest, KeyChange, Note, SentRequest, SessionStanding,
     SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
 };
-use quill_ui::backend::{Draft, ErrorCode, QueuedNote, Sending};
+use quill_ui::backend::{
+    Draft, ErrorCode, NoteVersion, QueuedNote, SafetyNumbers, Sending, Verification,
+};
 use tokio::runtime::Handle;
 use uuid::Uuid;
 
@@ -726,6 +728,47 @@ impl NativeBackend {
             .await
         })
     }
+}
+
+fn safety(n: sessions::SafetyNumbers) -> SafetyNumbers {
+    SafetyNumbers {
+        identity: n.identity.into_iter().map(str::to_owned).collect(),
+        check: n.check.into_iter().map(str::to_owned).collect(),
+        verified: n.verified,
+    }
+}
+
+/// Whether this device verified the session's other writer, and if so
+/// whether their published key is still the one pinned. Only a verified
+/// writer's key is fetched, so reading an unverified session costs nothing.
+async fn verification(
+    store: &Store,
+    client: &Client,
+    s: &quill_proto::sessions::Session,
+) -> Result<Verification, CoreError> {
+    if !sessions::verified(store, s)? {
+        return Ok(Verification::Unverified);
+    }
+    let Some(partner) = s.members.iter().find(|m| m.persona.is_none()) else {
+        return Ok(Verification::Verified);
+    };
+    let published = keys::check_published(
+        &client.actor_keys(&partner.handle).await?,
+        &partner.actor_uri,
+        keys::now_ms(),
+    )?;
+    let changed = match published.identity {
+        Some((key, version)) => matches!(
+            keys::check_pin(store, &partner.actor_uri, &key, version)?,
+            keys::PinStatus::Changed { .. }
+        ),
+        None => false,
+    };
+    Ok(if changed {
+        Verification::KeyChanged
+    } else {
+        Verification::Verified
+    })
 }
 
 impl Backend for NativeBackend {
@@ -1695,6 +1738,7 @@ impl Backend for NativeBackend {
                         .collect::<Vec<_>>();
                     let latest = notes.last().map(|n| n.at);
                     let opened = history::opened(store, &gid)?;
+                    let verification = verification(store, client, s).await?;
                     Ok(SessionView {
                         summary: summary(
                             s,
@@ -1708,6 +1752,7 @@ impl Backend for NativeBackend {
                         notes,
                         held_back: !reading.gaps.is_empty(),
                         history_missing: reading.history_missing.is_some(),
+                        verification,
                     })
                 };
                 work.await.map_err(|e| problem(&name, e))
@@ -1826,6 +1871,86 @@ impl Backend for NativeBackend {
             Ok(false) => Err(Problem::Gone),
             Err(e) => Err(problem(&open.name, e)),
         }
+    }
+
+    fn note_versions<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, Vec<NoteVersion>> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            let m = sessions::versions(&store, &client, &id, seq).await?;
+            Ok(m.versions
+                .into_iter()
+                .map(|v| NoteVersion {
+                    at: note_time(&v.hlc).unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+                    content: v.content,
+                })
+                .collect())
+        })
+    }
+
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()> {
+        let (id, text) = (id.to_owned(), text.to_owned());
+        self.call_locked(move |store, client| async move {
+            sessions::edit(&store, &client, &id, seq, &text)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            sessions::delete(&store, &client, &id, seq)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            sessions::restore(&store, &client, &id, seq)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(
+            move |store, client| async move { sessions::leave(&store, &client, &id).await },
+        )
+    }
+
+    fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            Ok(safety(
+                sessions::safety_numbers(&store, &client, &id).await?,
+            ))
+        })
+    }
+
+    fn confirm_verified<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            Ok(safety(
+                sessions::confirm_verified(&store, &client, &id).await?,
+            ))
+        })
+    }
+
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()> {
+        let (id, name, about) = (id.to_owned(), name.to_owned(), about.map(str::to_owned));
+        self.call_locked(move |store, client| async move {
+            sessions::name_channel(&store, &client, &id, &name, about.as_deref())
+                .await
+                .map(|_| ())
+        })
     }
 
     fn answers_seen(&self) -> Vec<Uuid> {

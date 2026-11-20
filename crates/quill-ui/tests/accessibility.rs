@@ -276,4 +276,36 @@ async fn sessions() {
     d.assert_accessible("writing, with a preview");
     d.click("Focus").await;
     d.assert_accessible("writing in focus mode");
+    d.click("Leave focus").await;
+    d.click("Write in place").await;
+    sim.server(SERVER, |s| s.reachable = true);
+
+    // Changing notes, channels, safety numbers, leaving (3f-3).
+    let mine = sim.write_as(SERVER, &id, "ink_fox", "story", "My line.");
+    sim.edit_note(SERVER, &id, first, "Chapter one, again.");
+    d.click("Story").await;
+    d.wait_for_text("My line.").await;
+    d.click("Edit your note").await;
+    d.assert_accessible("changing a note");
+    d.type_into(&format!("edit-{mine}"), "My better line.")
+        .await;
+    d.click("Save the change").await;
+    d.wait_for_text("Edited.").await;
+    d.assert_accessible("a note just changed, with Undo");
+    d.click_nth("Edited", 0).await;
+    d.wait_for_text("Every version, oldest first.").await;
+    d.assert_accessible("a note's history");
+    d.click("New channel").await;
+    d.type_into("channel-name", "Story").await;
+    d.assert_accessible("naming a channel, a name taken");
+    d.click("Cancel").await;
+    d.click("Describe this channel").await;
+    d.assert_accessible("describing a channel");
+    d.click("Cancel").await;
+    d.click("Compare safety numbers").await;
+    d.wait_for_text("Your 12 words with @wren").await;
+    d.assert_accessible("safety numbers");
+    d.click("Hide the safety numbers").await;
+    d.click("Leave the session…").await;
+    d.assert_accessible("asked before leaving");
 }

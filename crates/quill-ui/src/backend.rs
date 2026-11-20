@@ -501,6 +501,39 @@ pub struct Note {
     pub attachments: usize,
 }
 
+/// One version of a note, oldest first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteVersion {
+    pub at: time::OffsetDateTime,
+    /// Its text, or `None` where it was deleted.
+    pub content: Option<String>,
+}
+
+/// Whether this computer has compared safety numbers with the session's
+/// other writer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verification {
+    /// Never compared here (comparing is offered, never required).
+    Unverified,
+    /// Compared, and marked verified for their current identity key.
+    Verified,
+    /// Marked verified, but their identity key has changed since.
+    KeyChanged,
+}
+
+/// The words two writers compare to be sure no one is between them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SafetyNumbers {
+    /// 12 words from both writers' identity keys: the same as on Personas
+    /// and in requests, and for both writers.
+    pub identity: Vec<String>,
+    /// 6 words for the session's keys now. They change when its keys do
+    /// (a device added or removed), so both writers compare them together.
+    pub check: Vec<String>,
+    /// Marked verified on this computer, for their current key.
+    pub verified: bool,
+}
+
 /// A session, read on this computer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionView {
@@ -512,6 +545,7 @@ pub struct SessionView {
     pub held_back: bool,
     /// Part of the session's history isn't on this computer yet.
     pub history_missing: bool,
+    pub verification: Verification,
 }
 
 /// The longest device name, in characters (as `quill-core` allows).
@@ -724,6 +758,32 @@ pub trait Backend {
     fn change_waiting(&self, id: &str, note: Uuid, text: &str) -> Result<(), Problem>;
     /// Takes a waiting note back. Fails with `Gone` if it already went.
     fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem>;
+    /// Every version of one of the session's notes, oldest first.
+    fn note_versions<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, Vec<NoteVersion>>;
+    /// Changes one of the writer's own notes; every version is kept.
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()>;
+    /// Deletes one of the writer's own notes. It's hidden, not erased: both
+    /// writers keep its versions (`docs/plan.md`, "Full edit history").
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
+    /// Brings back one of the writer's deleted notes, as a new edit (#104).
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
+    /// The session's safety numbers. Fails with `KeyChanged` if the other
+    /// writer's identity key changed since this computer pinned it.
+    fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers>;
+    /// Marks the other writer verified on this computer, for their current
+    /// identity key, once the words matched.
+    fn confirm_verified<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers>;
+    /// Leaves a session, which ends it for both writers. What's written
+    /// stays readable on this computer.
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()>;
+    /// Names a new channel, or describes one again, for both writers.
+    /// `name` is as `quill_proto::validate::channel` allows.
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()>;
 
     // ---- Upkeep and settings --------------------------------------------------------------
 

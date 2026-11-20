@@ -15,6 +15,8 @@ mod devices;
 mod requests;
 mod sessions;
 
+use sessions::Change;
+
 pub use requests::State as RequestState;
 
 use crate::backend::{
@@ -964,6 +966,47 @@ impl Backend for Sim {
 
     fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem> {
         self.sim_withdraw_waiting(id, note)
+    }
+
+    fn note_versions<'a>(
+        &'a self,
+        id: &'a str,
+        seq: u64,
+    ) -> Call<'a, Vec<crate::backend::NoteVersion>> {
+        now(self.sim_note_versions(id, seq))
+    }
+
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()> {
+        now(self.sim_change_note(id, seq, Change::Edit(text)))
+    }
+
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        now(self.sim_change_note(id, seq, Change::Delete))
+    }
+
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        now(self.sim_change_note(id, seq, Change::Restore))
+    }
+
+    fn name_channel<'a>(
+        &'a self,
+        id: &'a str,
+        name: &'a str,
+        about: Option<&'a str>,
+    ) -> Call<'a, ()> {
+        now(self.sim_name_channel(id, name, about))
+    }
+
+    fn leave_session<'a>(&'a self, id: &'a str) -> Call<'a, ()> {
+        now(self.sim_leave(id))
+    }
+
+    fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        now(self.sim_safety_numbers(id, false))
+    }
+
+    fn confirm_verified<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        now(self.sim_safety_numbers(id, true))
     }
 
     fn answers_seen(&self) -> Vec<Uuid> {

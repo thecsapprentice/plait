@@ -1,7 +1,7 @@
 //! Writing in a session (3f-2): the editor, sending through the outbox,
 //! drafts kept as you type, and notes waiting to be sent.
 //!
-//! The editor follows the 3a spike (spikes/gui/FINDINGS.md): the text area
+//! The editor follows the 3a findings (docs/plan.md): the text area
 //! is uncontrolled and only replaced by remounting it (findings 1 and 2);
 //! the Live form draws the styled source behind it (finding 3); the preview
 //! and the draft's saving run a few times a second, not per key (finding
@@ -144,7 +144,7 @@ pub fn Composer(
     let (backend, mut model) = use_ui();
     // A memo, so other changes to the model don't re-render the editor.
     let focused = use_memo(move || model.read().sessions.focus)();
-    let label = super::reading::tab_label(&channel);
+    let label = super::tab_label(&channel);
 
     // The draft as last typed, and whether it's changed since it was kept.
     let b = backend.clone();

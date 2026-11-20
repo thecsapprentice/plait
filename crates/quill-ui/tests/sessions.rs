@@ -301,7 +301,8 @@ async fn an_ended_session_stays_readable() {
     d.click("Board").await;
     d.click("Sessions 1 unread").await;
     d.wait_for_text("Ended").await;
-    assert!(d.has_text("The other writer left"));
+    // As on the server, both stay its writers; who left isn't said.
+    assert!(d.has_text("@wren") && !d.has_text("The other writer left"));
     d.click_containing("Open").await;
     d.wait_for_text("This session has ended.").await;
     assert!(d.has_text("Goodbye, keeper."));

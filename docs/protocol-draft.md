@@ -275,13 +275,13 @@ Allowed activity types: `Create`, `Update`, `Delete`, `Like`, `Announce`, `Undo`
 
 **Nothing is ever lost.** `Update` and `Delete` are new encrypted activities appended to the log; they never remove the original `Create` from anyone's copy.
 
-- **Display.** Each message shows its current state: the latest `Update`, or a "deleted by author" placeholder after `Delete`. An "edited" or "deleted" marker opens the full edit history on demand.
+- **Display.** Each message shows its current state: the latest `Update`, or a "deleted by author" placeholder after `Delete`. An "edited" or "deleted" marker opens the full edit history on demand. The current state follows from the last version: an author's `Update` after their own `Delete` restores the message (an undone delete), and a second `Delete` adds nothing.
 
 - **Retention.** Clients keep every version. History synced to a newly linked device or written to a backup includes all versions.
 
 - **Authority.** Only the original author's `Update` or `Delete` is honored; others are discarded.
 
-- **User expectation.** The composer tells writers that deleting hides a message but their partner keeps its history.
+- **User expectation.** A delete is a retraction both writers see, not an erasure: the partner already holds the text, and a modified client can ignore a `Delete` entirely. The client tells writers that deleting hides a message but their partner keeps its history.
 
 - **Fallback.** If keeping every version proves infeasible (storage or performance), add a per-session `mutable` / `immutable` setting fixed at session creation. Not planned unless needed.
 

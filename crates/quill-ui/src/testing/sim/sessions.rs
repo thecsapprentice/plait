@@ -2,7 +2,8 @@
 //! sessions and `quill-core`'s `sessions` and `history`. An accepted
 //! request becomes a session between its two writers, starting with the
 //! pitch in the planning channel. Each note has a number (its place in the
-//! log); edits keep every version; a deletion keeps them too. This
+//! log); edits keep every version; a deletion keeps them too, and its
+//! author's later edit restores it (#104). This
 //! computer keeps how far it has shown each channel, its standing, drafts,
 //! and notes waiting to be sent (`quill-core`'s `drafts`): they go in
 //! order once the server can be reached, and stop at a refusal.
@@ -14,8 +15,8 @@ use uuid::Uuid;
 
 use super::{Sim, SimServer, refused};
 use crate::backend::{
-    ChannelView, Draft, NOTE_MAX, Note, Problem, QueuedNote, Sending, SessionStanding,
-    SessionSummary, SessionView, Writer, codes,
+    ChannelView, Draft, NOTE_MAX, Note, NoteVersion, Problem, QueuedNote, SafetyNumbers, Sending,
+    SessionStanding, SessionSummary, SessionView, Verification, Writer, codes,
 };
 
 /// The channels every session has.
@@ -27,20 +28,45 @@ pub(super) struct SimNote {
     /// The author's handle.
     author: String,
     channel: String,
-    versions: Vec<String>,
-    deleted: bool,
+    /// Every version, oldest first, each with its time: its text, or
+    /// `None` where it was deleted. The last decides, as in `history`.
+    versions: Vec<(Option<String>, OffsetDateTime)>,
     reply_to: Option<u64>,
-    at: OffsetDateTime,
+}
+
+impl SimNote {
+    fn deleted(&self) -> bool {
+        self.versions.last().is_some_and(|(c, _)| c.is_none())
+    }
+
+    /// The last text, kept after a deletion.
+    fn content(&self) -> String {
+        self.versions
+            .iter()
+            .rev()
+            .find_map(|(c, _)| c.clone())
+            .unwrap_or_default()
+    }
+
+    fn at(&self) -> OffsetDateTime {
+        self.versions.first().map_or_else(base_time, |(_, at)| *at)
+    }
+}
+
+/// A change the writer makes to one of their own notes.
+pub(super) enum Change<'a> {
+    Edit(&'a str),
+    Delete,
+    Restore,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct SimSession {
     pub(super) id: String,
     prompt: Uuid,
-    /// The two writers still in it: login and handle.
+    /// Its two writers, login and handle. As on the server, leaving ends
+    /// the session but keeps both.
     members: Vec<(String, String)>,
-    /// Both writers, even after one leaves: handle, for naming notes.
-    writers: Vec<String>,
     notes: Vec<SimNote>,
     /// Named channels beyond the defaults: name and description.
     channels: Vec<(String, Option<String>)>,
@@ -87,7 +113,6 @@ impl SimServer {
         let mut s = SimSession {
             id: id.clone(),
             prompt,
-            writers: vec![requester.1.clone(), author.1.clone()],
             members: vec![requester.clone(), author],
             notes: Vec::new(),
             channels: Vec::new(),
@@ -115,16 +140,27 @@ impl SimSession {
         {
             self.channels.push((channel.to_owned(), None));
         }
+        let at = self.clock();
         self.notes.push(SimNote {
             seq: self.seq,
             author: author.to_owned(),
             channel: channel.to_owned(),
-            versions: vec![text.to_owned()],
-            deleted: false,
+            versions: vec![(Some(text.to_owned()), at)],
             reply_to,
-            at: base_time() + Duration::minutes(i64::try_from(self.seq).unwrap_or(0)),
         });
         self.seq
+    }
+
+    /// The time of the change at the log's newest place.
+    fn clock(&self) -> OffsetDateTime {
+        base_time() + Duration::minutes(i64::try_from(self.seq).unwrap_or(0))
+    }
+
+    /// A new version of note `seq`, taking the next place in the log.
+    fn change(&mut self, seq: u64, content: Option<String>) {
+        self.seq += 1;
+        let at = self.clock();
+        self.note_mut(seq).versions.push((content, at));
     }
 
     fn note_mut(&mut self, seq: u64) -> &mut SimNote {
@@ -213,22 +249,18 @@ impl Sim {
         seq
     }
 
-    /// A note is changed by its author; every version is kept.
+    /// A note is changed by its author; every version is kept. After a
+    /// deletion, this restores it.
     pub fn edit_note(&self, domain: &str, session: &str, seq: u64, text: &str) {
         self.server(domain, |s| {
-            s.session_mut(session)
-                .note_mut(seq)
-                .versions
-                .push(text.into())
+            s.session_mut(session).change(seq, Some(text.into()))
         });
         self.live();
     }
 
     /// A note is deleted by its author; it shows as deleted.
     pub fn delete_note(&self, domain: &str, session: &str, seq: u64) {
-        self.server(domain, |s| {
-            s.session_mut(session).note_mut(seq).deleted = true
-        });
+        self.server(domain, |s| s.session_mut(session).change(seq, None));
         self.live();
     }
 
@@ -247,10 +279,14 @@ impl Sim {
     }
 
     /// `handle` leaves: with two writers, that ends the session for both.
+    /// As on the server, both stay its members, and who left isn't said.
     pub fn leave_as(&self, domain: &str, session: &str, handle: &str) {
         self.server(domain, |s| {
             let session = s.session_mut(session);
-            session.members.retain(|(_, h)| h != handle);
+            assert!(
+                session.members.iter().any(|(_, h)| h == handle),
+                "@{handle} isn't in it"
+            );
             session.ended = true;
         });
         self.live();
@@ -321,16 +357,28 @@ impl Sim {
             ended: s.ended,
             notes: s.notes.len(),
             unseen: channels.iter().map(|c| c.unseen).sum(),
-            latest: s.notes.last().map(|n| n.at),
+            latest: s.notes.last().map(SimNote::at),
             opened: here.opened.contains(&s.id),
         }
     }
 
     fn channels_of(here: &Here, s: &SimSession, me: &str) -> Vec<ChannelView> {
+        // Story and Planning come first, described if either was.
+        let about = |n: &str| {
+            s.channels
+                .iter()
+                .find(|(c, _)| c == n)
+                .and_then(|(_, a)| a.clone())
+        };
         let names = DEFAULT_CHANNELS
             .iter()
-            .map(|n| ((*n).to_owned(), None))
-            .chain(s.channels.iter().cloned());
+            .map(|n| ((*n).to_owned(), about(n)))
+            .chain(
+                s.channels
+                    .iter()
+                    .filter(|(n, _)| !DEFAULT_CHANNELS.contains(&n.as_str()))
+                    .cloned(),
+            );
         names
             .map(|(name, summary)| {
                 let shown = here
@@ -361,16 +409,7 @@ impl Sim {
             .sessions
             .all
             .iter()
-            .filter(|s| {
-                s.mine(&login).is_some()
-                    || s.ended
-                        && s.writers.iter().any(|w| {
-                            server
-                                .personas
-                                .iter()
-                                .any(|(l, p, _)| l == &login && &p.handle == w)
-                        })
-            })
+            .filter(|s| s.mine(&login).is_some())
             .map(|s| self.summary_of(&server, s, &login))
             .collect();
         out.sort_by_key(|s| std::cmp::Reverse(s.latest));
@@ -413,21 +452,28 @@ impl Sim {
                 mine: n.author == me,
                 author: Self::writer_named(&server, &n.author),
                 channel: n.channel.clone(),
-                content: n.versions.last().cloned().unwrap_or_default(),
-                deleted: n.deleted,
+                content: n.content(),
+                deleted: n.deleted(),
                 edited: n.versions.len() > 1,
                 reply_to: n.reply_to,
-                at: n.at,
+                at: n.at(),
                 attachments: 0,
             })
             .collect();
         let here = self.sessions_here();
+        let verification = summary
+            .partner
+            .as_ref()
+            .map_or(Verification::Unverified, |p| {
+                self.verification(&server, &p.handle)
+            });
         Ok(SessionView {
             channels: Self::channels_of(&here, s, &me),
             summary,
             notes,
             held_back: false,
             history_missing: false,
+            verification,
         })
     }
 
@@ -601,6 +647,137 @@ impl Sim {
         })
     }
 
+    pub(super) fn sim_note_versions(
+        &self,
+        id: &str,
+        seq: u64,
+    ) -> Result<Vec<NoteVersion>, Problem> {
+        let (_, server) = self.signed_in()?;
+        let s = server
+            .sessions
+            .all
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or(Problem::Gone)?;
+        let n = s.notes.iter().find(|n| n.seq == seq).ok_or(Problem::Gone)?;
+        Ok(n.versions
+            .iter()
+            .map(|(content, at)| NoteVersion {
+                at: *at,
+                content: content.clone(),
+            })
+            .collect())
+    }
+
+    /// The writer changes one of their own notes, refused as
+    /// `sessions::edit`, `delete` and `restore` refuse.
+    pub(super) fn sim_change_note(&self, id: &str, seq: u64, c: Change<'_>) -> Result<(), Problem> {
+        let refuse = |text: &str| Err(refused(codes::SESSION_CHECK_FAILED, text));
+        self.writing(|server, login| {
+            let session = server.session_mut(id);
+            let Some((_, handle)) = session.mine(login).cloned().filter(|_| !session.ended) else {
+                return refuse("the session has ended");
+            };
+            let n = session.note_mut(seq);
+            if n.author != handle {
+                return refuse("only its author can change a message");
+            }
+            let content = match c {
+                Change::Edit(_) | Change::Delete if n.deleted() => {
+                    return refuse("that message was deleted");
+                }
+                Change::Restore if !n.deleted() => return refuse("that message isn't deleted"),
+                Change::Edit(text) => {
+                    let text = text.trim();
+                    if text.is_empty() || text.chars().count() > NOTE_MAX {
+                        return refuse("a note can't be empty or longer than the limit");
+                    }
+                    Some(text.to_owned())
+                }
+                Change::Delete => None,
+                Change::Restore => Some(n.content()),
+            };
+            session.change(seq, content);
+            Ok(())
+        })?;
+        self.live();
+        Ok(())
+    }
+
+    /// The session's safety numbers, as `sessions::safety_numbers` gives
+    /// them; `verify` marks the other writer verified, as
+    /// `confirm_verified` does. The 6 words follow the session's keys,
+    /// which in Sim never change.
+    pub(super) fn sim_safety_numbers(
+        &self,
+        id: &str,
+        verify: bool,
+    ) -> Result<SafetyNumbers, Problem> {
+        let view = self.sim_session(id)?;
+        let partner = view.summary.partner.ok_or_else(|| {
+            refused(
+                codes::SESSION_CHECK_FAILED,
+                "the other writer has left this session",
+            )
+        })?;
+        let (identity, verified) =
+            self.sim_identity_check(&view.summary.me.handle, &partner.handle, verify)?;
+        let mut check = super::requests::words((id, 1), ("epoch", 1));
+        check.truncate(6);
+        Ok(SafetyNumbers {
+            identity,
+            check,
+            verified,
+        })
+    }
+
+    /// The writer leaves, as `sessions::leave` does: the session ends for
+    /// both, and stays readable. Leaving one already ended is refused.
+    pub(super) fn sim_leave(&self, id: &str) -> Result<(), Problem> {
+        self.writing(|server, login| {
+            let session = server.session_mut(id);
+            if session.mine(login).is_none() {
+                return Err(Problem::Gone);
+            }
+            session.ended = true;
+            Ok(())
+        })?;
+        self.live();
+        Ok(())
+    }
+
+    /// Names a channel or describes it again, refused as
+    /// `sessions::name_channel` refuses.
+    pub(super) fn sim_name_channel(
+        &self,
+        id: &str,
+        name: &str,
+        about: Option<&str>,
+    ) -> Result<(), Problem> {
+        let refuse = |text: String| Err(refused(codes::SESSION_CHECK_FAILED, &text));
+        if let Err(e) = quill_proto::validate::channel(name) {
+            return refuse(e.to_string());
+        }
+        let about = match quill_proto::validate::summary(about) {
+            Ok(a) => a,
+            Err(e) => return refuse(format!("description {e}")),
+        };
+        self.writing(|server, login| {
+            let session = server.session_mut(id);
+            if session.mine(login).is_none() || session.ended {
+                return refuse("the session has ended".into());
+            }
+            session.seq += 1;
+            match session.channels.iter_mut().find(|(n, _)| n == name) {
+                Some(c) => c.1 = about,
+                None => session.channels.push((name.to_owned(), about)),
+            }
+            Ok(())
+        })?;
+        self.live();
+        Ok(())
+    }
+
     /// What upkeep does once the server can be reached: every session's
     /// waiting notes go.
     pub(super) fn sim_flush_all(&self) {
@@ -625,6 +802,17 @@ impl Sim {
             .collect()
     }
 
+    /// Whether a session has ended, on the server.
+    pub fn session_ended(&self, domain: &str, id: &str) -> bool {
+        self.server(domain, |s| s.session_mut(id).ended)
+    }
+
+    /// The named channels in a session beyond Story and Planning, as the
+    /// server holds them, with their descriptions.
+    pub fn channels_in(&self, domain: &str, id: &str) -> Vec<(String, Option<String>)> {
+        self.server(domain, |s| s.session_mut(id).channels.clone())
+    }
+
     /// The notes in a session, as the server holds them: (author, channel,
     /// text, answering).
     pub fn notes_in(&self, domain: &str, id: &str) -> Vec<(String, String, String, Option<u64>)> {
@@ -636,7 +824,11 @@ impl Sim {
                     (
                         n.author.clone(),
                         n.channel.clone(),
-                        n.versions.last().cloned().unwrap_or_default(),
+                        if n.deleted() {
+                            String::new()
+                        } else {
+                            n.content()
+                        },
                         n.reply_to,
                     )
                 })
