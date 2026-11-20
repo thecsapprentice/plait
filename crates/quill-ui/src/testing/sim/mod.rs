@@ -15,6 +15,8 @@ mod devices;
 mod requests;
 mod sessions;
 
+use sessions::Change;
+
 pub use requests::State as RequestState;
 
 use crate::backend::{
@@ -964,6 +966,26 @@ impl Backend for Sim {
 
     fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem> {
         self.sim_withdraw_waiting(id, note)
+    }
+
+    fn note_versions<'a>(
+        &'a self,
+        id: &'a str,
+        seq: u64,
+    ) -> Call<'a, Vec<crate::backend::NoteVersion>> {
+        now(self.sim_note_versions(id, seq))
+    }
+
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()> {
+        now(self.sim_change_note(id, seq, Change::Edit(text)))
+    }
+
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        now(self.sim_change_note(id, seq, Change::Delete))
+    }
+
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        now(self.sim_change_note(id, seq, Change::Restore))
     }
 
     fn answers_seen(&self) -> Vec<Uuid> {

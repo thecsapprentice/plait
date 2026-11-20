@@ -33,7 +33,7 @@ use quill_ui::backend::{
     ChannelView, Inbox, IncomingRequest, KeyChange, Note, SentRequest, SessionStanding,
     SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
 };
-use quill_ui::backend::{Draft, ErrorCode, QueuedNote, Sending};
+use quill_ui::backend::{Draft, ErrorCode, NoteVersion, QueuedNote, Sending};
 use tokio::runtime::Handle;
 use uuid::Uuid;
 
@@ -1826,6 +1826,47 @@ impl Backend for NativeBackend {
             Ok(false) => Err(Problem::Gone),
             Err(e) => Err(problem(&open.name, e)),
         }
+    }
+
+    fn note_versions<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, Vec<NoteVersion>> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            let m = sessions::versions(&store, &client, &id, seq).await?;
+            Ok(m.versions
+                .into_iter()
+                .map(|v| NoteVersion {
+                    at: note_time(&v.hlc).unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+                    content: v.content,
+                })
+                .collect())
+        })
+    }
+
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()> {
+        let (id, text) = (id.to_owned(), text.to_owned());
+        self.call_locked(move |store, client| async move {
+            sessions::edit(&store, &client, &id, seq, &text)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            sessions::delete(&store, &client, &id, seq)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
+        let id = id.to_owned();
+        self.call_locked(move |store, client| async move {
+            sessions::restore(&store, &client, &id, seq)
+                .await
+                .map(|_| ())
+        })
     }
 
     fn answers_seen(&self) -> Vec<Uuid> {

@@ -501,6 +501,14 @@ pub struct Note {
     pub attachments: usize,
 }
 
+/// One version of a note, oldest first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteVersion {
+    pub at: time::OffsetDateTime,
+    /// Its text, or `None` where it was deleted.
+    pub content: Option<String>,
+}
+
 /// A session, read on this computer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionView {
@@ -724,6 +732,15 @@ pub trait Backend {
     fn change_waiting(&self, id: &str, note: Uuid, text: &str) -> Result<(), Problem>;
     /// Takes a waiting note back. Fails with `Gone` if it already went.
     fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem>;
+    /// Every version of one of the session's notes, oldest first.
+    fn note_versions<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, Vec<NoteVersion>>;
+    /// Changes one of the writer's own notes; every version is kept.
+    fn edit_note<'a>(&'a self, id: &'a str, seq: u64, text: &'a str) -> Call<'a, ()>;
+    /// Deletes one of the writer's own notes. It's hidden, not erased: both
+    /// writers keep its versions (`docs/plan.md`, "Full edit history").
+    fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
+    /// Brings back one of the writer's deleted notes, as a new edit (#104).
+    fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
 
     // ---- Upkeep and settings --------------------------------------------------------------
 

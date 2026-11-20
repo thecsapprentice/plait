@@ -886,6 +886,12 @@ impl Driver {
         self.keydown(b, key).await;
     }
 
+    /// Presses `key` in the field with `id`, as when it has focus.
+    pub async fn press_in(&mut self, id: &str, key: dioxus_html::Key) {
+        let field = self.by_id(id);
+        self.keydown(field, key).await;
+    }
+
     /// Presses `key` with Ctrl (Cmd on a Mac) held, in the field with `id`.
     pub async fn press_command(&mut self, id: &str, key: dioxus_html::Key) {
         let field = self.by_id(id);

@@ -351,6 +351,22 @@ impl Backend for Fake {
     fn withdraw_waiting(&self, _: &str, _: Uuid) -> Result<(), Problem> {
         Ok(())
     }
+    fn note_versions<'a>(
+        &'a self,
+        _: &'a str,
+        _: u64,
+    ) -> Call<'a, Vec<crate::backend::NoteVersion>> {
+        ready(Ok(Vec::new()))
+    }
+    fn edit_note<'a>(&'a self, _: &'a str, _: u64, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn delete_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn restore_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
     fn upkeep(&self) -> Call<'_, Option<Problem>> {
         ready(Ok(None))
     }
