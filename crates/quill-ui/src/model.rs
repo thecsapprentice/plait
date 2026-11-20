@@ -147,6 +147,8 @@ pub struct Sessions {
     pub epoch: u32,
     /// The session open on the Sessions screen, by id.
     pub open: Option<String>,
+    /// Writing in focus mode: only the editor shows (3f-2).
+    pub focus: bool,
 }
 
 impl Sessions {

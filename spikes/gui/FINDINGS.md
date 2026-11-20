@@ -166,6 +166,27 @@ HTML and styles, so the cause isn't known yet. The note styles now set
 list markers outright (`list-style`, `display: list-item`) so nothing on
 the page can reset them; to check again in Edge.
 
+## In the app (3f-2)
+
+The editor as built in `quill-ui` (3f-2), checked on **Linux: WebKitGTK 2.52
+under Xvfb with software rendering**, 2026-11-19, against a seeded dev
+server:
+
+- Live keeps every keystroke, and selections line up with the styled text,
+  after code spans and links too. A first try didn't: the mirror's `code`
+  span took the app's own `.code` style (smaller, monospace) and drifted.
+  The mirror's classes are now its own (`md-*`).
+- Spellcheck underlines show in Live, where they line up with the styled
+  text, and in Write and preview.
+- Ctrl+B and Ctrl+I wrap the selection and keep it selected; Ctrl+Enter
+  sends. Keeping the selection needed the text area's own mount event:
+  a script run straight after remounting found the old one.
+- Drafts come back after the app closes and opens. A note written while
+  the server is down waits, and goes once it's back.
+- Narrow: one column with the channels above. Started narrow it's right
+  away; resized narrow, the restyle caveat in finding 7 still applies
+  under Xvfb.
+
 ## Still to check, by hand
 
 Each with the spike running (README). Record results here, with who
@@ -180,10 +201,12 @@ checked and on what.
 | Check | Windows (WebView2) | macOS (WKWebView) | Linux desktop | Chrome | Firefox | Safari |
 | --- | --- | --- | --- | --- | --- | --- |
 | Builds (CI) and runs | yes | builds | yes (Xvfb) | builds | | |
-| Spellcheck in each editor form | | | yes (after switching on) | | | |
+| Spellcheck in each editor form | | | yes (after switching on); app, 3f-2: Live and Write and preview | | | |
 | Input methods: Japanese or Chinese, accents and dead keys, the emoji picker; nothing lost or doubled, in Live especially | | | | | | |
 | Screen reader: notes read, the editor named, everything reachable by keyboard | Narrator or NVDA | VoiceOver | Orca | | | |
 | Resizing narrow to wide | | | yes, with the restyle caveat | | | |
 | Typing at the end of the long draft feels smooth | | | software rendering: see 5 | | | |
+| The app's editor (3f-2) at its 20,000-character limit: Live throughout (the writer chooses Write and preview); typing keeps up | | | | | | |
+| Preview list markers in the app's Write and preview (finding 10) | | | | | | |
 | Adding an image by button and by dropping | | | | | | |
 | Look and colours, light and dark | | | light only | | | |

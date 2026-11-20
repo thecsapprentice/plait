@@ -451,6 +451,37 @@ pub struct ChannelView {
     pub unseen: usize,
 }
 
+/// A note being written in one channel, kept on this computer as it's typed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Draft {
+    pub text: String,
+    /// The note it answers, by its place in the session.
+    pub reply_to: Option<u64>,
+}
+
+/// A note written on this computer and not sent yet: offline, or refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedNote {
+    pub id: Uuid,
+    pub channel: String,
+    pub text: String,
+    pub reply_to: Option<u64>,
+    /// Why the server refused it; it waits to be changed or withdrawn.
+    pub refused: Option<(ErrorCode, String)>,
+}
+
+/// What became of a note sent: it went, it waits for the server, or the
+/// server refused it (it waits to be changed or withdrawn).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sending {
+    Sent,
+    Waiting,
+    Refused(ErrorCode, String),
+}
+
+/// The longest note, in characters (as `quill-core` allows).
+pub const NOTE_MAX: usize = 20_000;
+
 /// A note, as this computer holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Note {
@@ -667,6 +698,32 @@ pub trait Backend {
     fn mark_shown<'a>(&'a self, id: &'a str, channel: &'a str, upto: u64) -> Result<(), Problem>;
     /// Notes this computer has opened the session, so it's no longer new.
     fn mark_opened(&self, id: &str) -> Result<(), Problem>;
+    /// The draft kept on this computer for a channel; empty if none.
+    fn draft(&self, id: &str, channel: &str) -> Result<Draft, Problem>;
+    /// The channels with a draft on this computer. Local, so it works
+    /// offline.
+    fn drafted(&self, id: &str) -> Result<Vec<String>, Problem>;
+    /// The notes written here that haven't gone yet, oldest first. Local,
+    /// so they show offline.
+    fn waiting(&self, id: &str) -> Result<Vec<QueuedNote>, Problem>;
+    /// Keeps a channel's draft on this computer, encrypted; an empty one is
+    /// removed. Called as the writer types.
+    fn save_draft(&self, id: &str, channel: &str, draft: &Draft) -> Result<(), Problem>;
+    /// Sends a note: it's queued here first, then everything waiting goes in
+    /// order, so a note written offline is never overtaken.
+    fn send_note<'a>(
+        &'a self,
+        id: &'a str,
+        channel: &'a str,
+        text: &'a str,
+        reply_to: Option<u64>,
+    ) -> Call<'a, Sending>;
+    /// Tries the notes waiting in a session again, in order.
+    fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, Sending>;
+    /// Changes a waiting note's text; a refused one is tried again.
+    fn change_waiting(&self, id: &str, note: Uuid, text: &str) -> Result<(), Problem>;
+    /// Takes a waiting note back. Fails with `Gone` if it already went.
+    fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem>;
 
     // ---- Upkeep and settings --------------------------------------------------------------
 

@@ -258,6 +258,22 @@ async fn sessions() {
     d.wait_for_text("Chapter one.").await;
     d.assert_accessible("a session, reading");
     d.click_containing("Planning").await;
-    d.wait_for_text("In answer to").await;
+    d.wait_for_text("About chapter one.").await;
     d.assert_accessible("a session, another channel");
+
+    // Writing (3f-2): answering, a note waiting offline, focus mode.
+    d.click("Answer @wren's note").await;
+    d.type_into("note-editor", "Agreed.").await;
+    d.assert_accessible("writing, answering");
+    sim.server(SERVER, |s| s.reachable = false);
+    d.click("Send").await;
+    d.wait_for_text("Waiting to send").await;
+    d.assert_accessible("a note waiting to send");
+    d.click("Change").await;
+    d.assert_accessible("changing a waiting note");
+    d.click("Cancel").await;
+    d.click("Write and preview").await;
+    d.assert_accessible("writing, with a preview");
+    d.click("Focus").await;
+    d.assert_accessible("writing in focus mode");
 }

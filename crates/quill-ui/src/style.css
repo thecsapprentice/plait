@@ -45,6 +45,9 @@
   --control-compact: 1.75rem;
   --width-read: 42rem;
   --width-form: 34rem;
+  /* The editor at its widest, and in focus mode. */
+  --width-write: 62.5rem;
+  --width-focus: 46rem;
   --shadow-pop: 0 6px 24px rgb(0 0 0 / 0.14);
   --quick: 120ms;
   color-scheme: light dark;
@@ -305,7 +308,11 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .section[aria-current="page"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
 .main { grid-area: main; position: relative; overflow-y: auto; padding: 1.5rem clamp(1rem, 4vw, 3rem); }
 .main > h1 { margin-top: 0; font-size: 1.5rem; }
-.page { max-width: 44rem; }
+.page { max-width: 44rem; margin-inline: auto; }
+/* An open session: the channel list and the editor at its widest. In
+   Write and preview, room for two editors that wide, if the window has it. */
+.page.session { max-width: calc(12rem + var(--space-5) + var(--width-write)); }
+.page.session:has(.composer .split) { max-width: calc(12rem + var(--space-5) + 2 * var(--width-write) + var(--space-3)); }
 .status {
   grid-area: status;
   display: flex;
@@ -492,7 +499,7 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 /* ---- Sessions (3f) ---- */
 /* Channels run down the side of the notes, each with its unread count;
    above them on a narrow window. */
-.session-body { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, var(--width-read)); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
+.session-body { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
 .channels { display: flex; flex-direction: column; gap: 2px; position: sticky; top: var(--space-4); }
 .channels [role="tab"] { display: flex; align-items: center; justify-content: space-between; text-align: left; border: 0; border-left: 3px solid transparent; border-radius: 0 var(--radius-s) var(--radius-s) 0; background: none; padding: var(--space-2) var(--space-3); min-height: var(--control); color: var(--muted); cursor: pointer; font: inherit; }
 .channels [role="tab"]:hover { color: var(--ink); background: var(--surface); }
@@ -502,13 +509,77 @@ fieldset > .hint { margin-bottom: var(--space-3); }
   .session-body { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .channels { position: static; }
 }
-.channel { max-width: var(--width-read); min-width: 0; }
+.channel { min-width: 0; }
+/* Notes keep a reading width; the composer takes the whole column. */
+.channel .notes, .channel > .hint, .channel > .coming { max-width: var(--width-read); }
 .notes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .note header { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .note .name { font-weight: 600; }
 .note .pitch { font-family: var(--write); font-size: var(--text-read); line-height: 1.6; margin-top: var(--space-1); }
 .note.mine .name { color: var(--accent); }
 .note .answering { font-size: var(--text-sm); color: var(--muted); }
+
+/* Writing (3f-2). Every editor form shares .writing, so the Live mirror
+   and its text area match to the pixel (spike finding 3). */
+.note .note-action { margin-left: auto; min-height: auto; padding: 0 var(--space-2); font-size: var(--text-lg); line-height: 1; }
+.reply-mark { color: var(--muted); }
+.note.waiting { border-left: 3px solid var(--warn); padding-left: var(--space-3); }
+.note.waiting.refused { border-left-color: var(--bad); }
+.waiting-notes { margin-top: var(--space-4); }
+.composer { container-type: inline-size; max-width: var(--width-write); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--space-2); }
+.composer:has(.split) { max-width: calc(2 * var(--width-write) + var(--space-3)); }
+.answering-now { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--muted); }
+.answering-now span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.writing { font-family: var(--write); font-size: var(--text-read); line-height: 1.6; letter-spacing: normal; padding: var(--space-3); border: 1px solid var(--edge); border-radius: var(--radius-s); margin: 0; width: 100%; box-sizing: border-box; min-height: 8rem; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; color: var(--ink); }
+textarea.writing { resize: vertical; background: var(--surface); display: block; }
+.split { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 44rem) {
+  .split:not(.single) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* Write and preview's text area grows with its text as Live does, sized
+   by the webview: a mirror behind it would re-render on every key, which
+   is what this form avoids. Where unsupported, it can be dragged. */
+.split textarea { field-sizing: content; max-height: 60vh; overflow: auto; }
+.preview { padding: var(--space-3); border: 1px dashed var(--edge); border-radius: var(--radius-s); overflow: auto; max-height: 60vh; }
+/* Its first line lines up with the editor's beside it. */
+.split .preview .markdown > :first-child { margin-top: 0; }
+/* Live: the styled source, with a transparent text area over it. Both sit
+   in one grid cell; the mirror sets the height, so the text area grows with
+   the text and the box scrolls. */
+.live { display: grid; overflow: auto; max-height: 60vh; position: relative; border-radius: var(--radius-s); }
+.live > .writing { grid-area: 1 / 1; }
+.mirror { background: var(--surface); pointer-events: none; }
+.mirror .line { contain: content; }
+textarea.over { color: transparent; caret-color: var(--ink); background: transparent; overflow: hidden; resize: none; }
+textarea.over::placeholder { color: var(--muted); }
+textarea.over::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: transparent; }
+/* Styles that don't change any character's width, so the text lines up. */
+.mirror .md-mark { color: var(--muted); }
+.mirror .md-heading { color: var(--accent); text-shadow: 0.015em 0 0 currentColor; }
+.mirror .md-strong { text-shadow: 0.02em 0 0 currentColor; }
+.mirror .md-em { color: var(--accent); }
+.mirror .md-code { background: var(--paper); border-radius: 3px; }
+.mirror .md-quote { color: var(--muted); }
+.mirror .md-link { color: var(--accent); text-decoration: underline; text-decoration-color: var(--line); }
+.composer-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.composer-tools { display: flex; gap: var(--space-1); margin-right: auto; }
+.limit { font-size: var(--text-sm); color: var(--muted); }
+.limit.over { color: var(--bad); font-weight: 600; }
+.draft-mark { color: var(--muted); }
+/* Focus mode: only the open session's editor, centred, with a line saying
+   where it writes. Esc or "Leave focus" brings the rest back. */
+.focus-where { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.frame.focus { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "main" "status"; }
+.frame.focus .nav, .frame.focus .session-head, .frame.focus .channels,
+.frame.focus .channel > .hint, .frame.focus .channel > .coming,
+.frame.focus .notes:not(.waiting-notes) { display: none; }
+.frame.focus .page { max-width: none; }
+.frame.focus .session-body { grid-template-columns: minmax(0, 1fr); margin-top: 0; }
+.frame.focus .channel { max-width: none; }
+.frame.focus .composer { width: min(var(--width-focus), 100%); margin: var(--space-6) auto 0; border-top: 0; padding-top: 0; }
+.frame.focus .composer:has(.split) { width: min(calc(2 * var(--width-focus) + var(--space-3)), 100%); }
+.frame.focus .live, .frame.focus .preview, .frame.focus .split textarea { max-height: 75vh; }
+.frame.focus .writing { min-height: 60vh; }
 
 /* ---- The design reference (advanced mode) ---- */
 .ref-themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr)); gap: var(--space-5); align-items: start; }

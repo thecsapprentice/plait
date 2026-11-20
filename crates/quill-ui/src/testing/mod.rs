@@ -886,7 +886,24 @@ impl Driver {
         self.keydown(b, key).await;
     }
 
+    /// Presses `key` with Ctrl (Cmd on a Mac) held, in the field with `id`.
+    pub async fn press_command(&mut self, id: &str, key: dioxus_html::Key) {
+        let field = self.by_id(id);
+        self.keydown_with(field, key, dioxus_html::Modifiers::CONTROL)
+            .await;
+    }
+
     async fn keydown(&mut self, target: usize, key: dioxus_html::Key) {
+        self.keydown_with(target, key, dioxus_html::Modifiers::empty())
+            .await;
+    }
+
+    async fn keydown_with(
+        &mut self,
+        target: usize,
+        key: dioxus_html::Key,
+        modifiers: dioxus_html::Modifiers,
+    ) {
         use dioxus_html::{Code, Key};
         let code = match key {
             Key::Enter => Code::Enter,
@@ -901,7 +918,7 @@ impl Driver {
             code,
             dioxus_html::Location::Standard,
             false,
-            dioxus_html::Modifiers::empty(),
+            modifiers,
             false,
         );
         self.send(

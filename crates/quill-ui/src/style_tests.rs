@@ -121,3 +121,119 @@ fn a_tabs_unread_badge_keeps_apart_from_its_name() {
         .expect("a .channels .badge rule");
     assert!(rule.contains("margin-left"), "{rule}");
 }
+
+/// Found by hand (3f-2): the Live mirror's `code` span took the app's
+/// `.code` style (smaller, monospace), so its characters were narrower than
+/// the text area's and the two drifted apart. The mirror's classes are its
+/// own: the stylesheet styles them only inside `.mirror`.
+#[test]
+fn the_live_mirror_s_classes_are_styled_only_inside_it() {
+    let classes = crate::sessions::live::CLASSES;
+    for class in classes {
+        let needle = format!(".{class}");
+        let mut at = 0;
+        while let Some(i) = crate::STYLE[at..].find(&needle) {
+            let start = at + i;
+            let end = start + needle.len();
+            let next = crate::STYLE[end..].chars().next().unwrap_or(' ');
+            if !(next.is_alphanumeric() || next == '-' || next == '_') {
+                let before = &crate::STYLE[..start];
+                assert!(
+                    before.ends_with(".mirror "),
+                    "`{needle}` is styled outside the mirror"
+                );
+            }
+            at = end;
+        }
+    }
+}
+
+/// Found by hand (3f-2): in focus mode the editor sat at the left of the
+/// window, held there by the page column's width. The page widens, so the
+/// editor's own width and auto margins centre it.
+#[test]
+fn focus_mode_centres_the_editor() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".frame.focus .page").contains("max-width: none"));
+    assert!(rule(".frame.focus .composer").contains("margin: var(--space-6) auto 0"));
+}
+
+/// Found by hand (3f-2): on a narrow window, focus mode hid the side bar
+/// but kept the narrow layout's three rows, so the status bar took the
+/// stretching one. Focus mode sets its own two rows.
+#[test]
+fn focus_mode_keeps_the_status_bar_small_when_narrow() {
+    let rule = crate::STYLE
+        .lines()
+        .find(|l| l.starts_with(".frame.focus {"))
+        .expect("a .frame.focus rule");
+    assert!(
+        rule.contains("grid-template-rows: minmax(0, 1fr) auto"),
+        "{rule}"
+    );
+}
+
+/// Found by hand (3f-2): a wide window left the page at its left edge, and
+/// a session no wider than any page, so Write and preview had no room for
+/// its two columns. Pages centre; a session takes more width.
+#[test]
+fn pages_centre_and_a_session_has_room() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".page").contains("margin-inline: auto"));
+    assert!(rule(".page.session").contains("var(--width-write)"));
+}
+
+/// Found by hand (3f-2): in Write and preview the preview's first paragraph
+/// kept its top margin, so its first line sat lower than the editor's
+/// beside it. The first block inside it starts flush.
+#[test]
+fn the_side_by_side_preview_lines_up_with_the_editor() {
+    assert!(
+        crate::STYLE.lines().any(
+            |l| l.starts_with(".split .preview .markdown > :first-child {")
+                && l.contains("margin-top: 0")
+        ),
+        "no first-child rule for the side-by-side preview"
+    );
+}
+
+/// Found by hand (3f-2): Write and preview split Live's width in two. When
+/// there's room, the composer and the session page widen so each box is as
+/// wide as Live's widest, in focus mode too.
+#[test]
+fn write_and_preview_boxes_are_each_as_wide_as_live() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".composer").contains("max-width: var(--width-write)"));
+    assert!(rule(".composer:has(.split)").contains("2 * var(--width-write)"));
+    assert!(rule(".page.session:has(.composer .split)").contains("2 * var(--width-write)"));
+    assert!(rule(".frame.focus .composer").contains("var(--width-focus)"));
+    assert!(rule(".frame.focus .composer:has(.split)").contains("2 * var(--width-focus)"));
+}
+
+/// Found by hand (3f-2): Write and preview's text area stayed a fixed
+/// height while Live grew with its text. The webview sizes it, up to
+/// Live's height, so typing does no more work than before.
+#[test]
+fn the_plain_editor_grows_like_live() {
+    let rule = crate::STYLE
+        .lines()
+        .find(|l| l.starts_with(".split textarea {"))
+        .expect("a `.split textarea` rule");
+    assert!(rule.contains("field-sizing: content"), "{rule}");
+    assert!(rule.contains("max-height: 60vh"), "{rule}");
+}

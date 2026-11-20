@@ -8,10 +8,13 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use quill_board_ui::short_date;
 
-use super::{reload, standing_line};
+use super::{
+    compose::{Composer, WaitingNote},
+    reload, standing_line,
+};
 use crate::{
     app::{ProblemLine, use_ui},
-    backend::{Note, Problem, SessionView},
+    backend::{Note, Problem, QueuedNote, SessionView},
     markdown::{Markdown, plain_text},
 };
 
@@ -23,7 +26,7 @@ pub(crate) fn when(offset: time::UtcOffset, at: time::OffsetDateTime) -> String 
 }
 
 /// A channel's name as a tab: "Story", "Planning", or as named.
-fn tab_label(name: &str) -> String {
+pub(crate) fn tab_label(name: &str) -> String {
     let mut c = name.chars();
     match c.next() {
         Some(f) => f.to_uppercase().chain(c).collect(),
@@ -43,16 +46,37 @@ pub fn SessionPage(id: String) -> Element {
     // The label the arrow keys moved focus to: the webview doesn't ring
     // focus moved from code, so it carries `is-focus` until a click or blur.
     let mut key_focus = use_signal(|| None::<String>);
+    // The note being answered in the composer, and a nudge to focus it.
+    let mut answering = use_signal(|| None::<u64>);
+    let mut focus_editor = use_signal(|| 0u64);
+    // The server couldn't be reached on the last read: what was read stays.
+    let mut offline = use_signal(|| false);
+    // Bumped when drafts or waiting notes change here; they're read from
+    // this computer, apart from the session (so they show offline too).
+    let here = use_signal(|| 0u64);
+    // Focus mode is for this session's editor: leaving the session ends it.
+    use_drop(move || model.write().sessions.focus = false);
 
-    // Read again on each load of the list (a note arrived, live).
+    // Read again on each load of the list (a note arrived, live), and only
+    // then: the memo keeps other changes to the model from re-reading it.
+    let epoch = use_memo(move || model.read().sessions.epoch);
     let b = backend.clone();
     let sid = id.clone();
     use_effect(move || {
-        let _ = model.read().sessions.epoch;
+        let _ = epoch();
         let (b, sid) = (b.clone(), sid.clone());
         spawn(async move {
             let result = b.session(&sid).await;
-            view.set(Some(result));
+            // Offline, keep what was read: the writer can go on writing,
+            // and notes wait to be sent.
+            let had = matches!(&*view.peek(), Some(Ok(_)));
+            match result {
+                Err(Problem::Unreachable(_)) if had => offline.set(true),
+                r => {
+                    offline.set(false);
+                    view.set(Some(r));
+                }
+            }
         });
     });
     // Opening it here means it's no longer new, even if this computer
@@ -155,6 +179,24 @@ pub fn SessionPage(id: String) -> Element {
         .map(|n| (n.seq, (n.channel.clone(), first_line(&n.content))))
         .collect();
     let offset = backend.utc_offset();
+    let _ = (here(), epoch());
+    let drafted = backend.drafted(&id).unwrap_or_default();
+    let waiting: Vec<QueuedNote> = backend
+        .waiting(&id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|q| q.channel == current)
+        .collect();
+    let can_write = !s.ended && s.partner.is_some();
+    let answering_line = answering().and_then(|seq| {
+        let n = v.notes.iter().find(|n| n.seq == seq)?;
+        let who = if n.mine {
+            "you".to_owned()
+        } else {
+            n.author.name()
+        };
+        Some(format!("{who}: {}", first_line(&n.content)))
+    });
     let names: Vec<String> = v.channels.iter().map(|c| c.name.clone()).collect();
     // Up, Down, Home and End move between channels (a vertical tab list),
     // showing the one moved to and focusing its label.
@@ -182,7 +224,9 @@ pub fn SessionPage(id: String) -> Element {
         };
         names.get(to).cloned()
     };
+    let with = s.partner.as_ref().map(|p| p.name()).unwrap_or_default();
     rsx! {
+        div { class: "session-head",
         {back}
         h1 { "{heading}" }
         if let Some((_, t)) = &s.prompt {
@@ -200,6 +244,12 @@ pub fn SessionPage(id: String) -> Element {
         }
         if v.history_missing {
             p { class: "hint", "Older notes aren't on this computer yet. Another of your devices is sending them." }
+        }
+        }
+        if offline() {
+            div { class: "notice", role: "status",
+                "Can't reach the server. This is what was last read; notes you send wait here until it's back."
+            }
         }
         div { class: "session-body",
             div {
@@ -255,6 +305,9 @@ pub fn SessionPage(id: String) -> Element {
                             }
                         },
                         span { class: "label", "{tab_label(&c.name)}" }
+                        if drafted.contains(&c.name) && c.name != current {
+                            span { class: "draft-mark", title: "Draft", " ✎" span { class: "sr-only", " draft" } }
+                        }
                         if c.unseen > 0 && c.name != current {
                             span { class: "badge", " {c.unseen}" span { class: "sr-only", " unread" } }
                         }
@@ -286,8 +339,35 @@ pub fn SessionPage(id: String) -> Element {
                                         });
                                     }
                                 },
+                                can_answer: can_write,
+                                on_reply: move |seq: u64| {
+                                    answering.set(Some(seq));
+                                    *focus_editor.write() += 1;
+                                },
                                 n,
                             }
+                        }
+                    }
+                }
+                if !waiting.is_empty() {
+                    ol { class: "notes waiting-notes", aria_label: "Waiting to send",
+                        for q in waiting {
+                            WaitingNote { key: "{q.id}", id: id.clone(), note: q, here }
+                        }
+                    }
+                }
+                if can_write {
+                    // Keyed by channel: each channel's draft loads with it.
+                    for ch in [current.clone()] {
+                        Composer {
+                            key: "{ch}",
+                            id: id.clone(),
+                            channel: ch.clone(),
+                            answering,
+                            answering_line: answering_line.clone(),
+                            focus: focus_editor,
+                            here,
+                            with: with.clone(),
                         }
                     }
                 }
@@ -320,7 +400,15 @@ fn NoteItem(
     answering: Option<(u64, (String, String))>,
     on_mounted: EventHandler<(u64, Rc<MountedData>)>,
     on_answer: EventHandler<(u64, String)>,
+    /// Whether the writer can answer it (the session is still going).
+    can_answer: bool,
+    on_reply: EventHandler<u64>,
 ) -> Element {
+    let author = if n.mine {
+        "your".to_owned()
+    } else {
+        format!("{}'s", n.author.name())
+    };
     let seq = n.seq;
     rsx! {
         li {
@@ -333,12 +421,24 @@ fn NoteItem(
                 if n.edited && !n.deleted {
                     span { class: "tag", "Edited" }
                 }
+                if can_answer && !n.deleted {
+                    button {
+                        class: "quiet note-action",
+                        aria_label: "Answer {author} note",
+                        title: "Answer",
+                        onclick: move |_| on_reply.call(seq),
+                        span { aria_hidden: "true", "↩" }
+                    }
+                }
             }
             if let Some((to, (ch, first))) = answering {
                 button {
                     class: "link answering",
+                    aria_label: "In answer to: {first}",
+                    title: "In answer to",
                     onclick: move |_| on_answer.call((to, ch.clone())),
-                    "In answer to: {first}"
+                    span { class: "reply-mark", aria_hidden: "true", "↩ " }
+                    "{first}"
                 }
             }
             if n.deleted {

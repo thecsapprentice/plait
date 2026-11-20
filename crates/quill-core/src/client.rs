@@ -71,6 +71,17 @@ pub enum CoreError {
 }
 
 impl CoreError {
+    /// Whether trying again later may work: the server couldn't be reached,
+    /// or said it's briefly unavailable. The outbox keeps notes for these.
+    pub fn temporary(&self) -> bool {
+        match self {
+            Self::Http(h) => h.is_connect() || h.is_timeout() || h.is_request(),
+            Self::Api(p) => matches!(p.status, 502..=504),
+            Self::Unexpected { status } => matches!(status.as_u16(), 502..=504),
+            _ => false,
+        }
+    }
+
     /// Core's own error with its code.
     pub fn coded(code: ErrorCode, msg: impl Into<String>) -> Self {
         Self::Keys(code, msg.into())

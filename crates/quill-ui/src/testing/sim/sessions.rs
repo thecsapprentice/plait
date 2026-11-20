@@ -3,7 +3,9 @@
 //! request becomes a session between its two writers, starting with the
 //! pitch in the planning channel. Each note has a number (its place in the
 //! log); edits keep every version; a deletion keeps them too. This
-//! computer keeps how far it has shown each channel, and its standing.
+//! computer keeps how far it has shown each channel, its standing, drafts,
+//! and notes waiting to be sent (`quill-core`'s `drafts`): they go in
+//! order once the server can be reached, and stop at a refusal.
 
 use std::collections::{HashMap, HashSet};
 
@@ -12,7 +14,8 @@ use uuid::Uuid;
 
 use super::{Sim, SimServer, refused};
 use crate::backend::{
-    ChannelView, Note, Problem, SessionStanding, SessionSummary, SessionView, Writer, codes,
+    ChannelView, Draft, NOTE_MAX, Note, Problem, QueuedNote, Sending, SessionStanding,
+    SessionSummary, SessionView, Writer, codes,
 };
 
 /// The channels every session has.
@@ -60,6 +63,10 @@ pub(super) struct Here {
     standing: HashMap<String, SessionStanding>,
     /// Sessions opened in this store, as `history::mark_opened` keeps.
     opened: HashSet<String>,
+    /// Drafts by session and channel.
+    drafts: HashMap<(String, String), Draft>,
+    /// Notes waiting to be sent: session and note, oldest first.
+    queued: Vec<(String, QueuedNote)>,
 }
 
 fn base_time() -> OffsetDateTime {
@@ -414,8 +421,9 @@ impl Sim {
                 attachments: 0,
             })
             .collect();
+        let here = self.sessions_here();
         Ok(SessionView {
-            channels: Self::channels_of(&self.sessions_here(), s, &me),
+            channels: Self::channels_of(&here, s, &me),
             summary,
             notes,
             held_back: false,
@@ -440,5 +448,199 @@ impl Sim {
             store.sessions.opened.insert(id.to_owned());
         });
         Ok(())
+    }
+
+    pub(super) fn sim_draft(&self, id: &str, channel: &str) -> Result<Draft, Problem> {
+        Ok(self
+            .sessions_here()
+            .drafts
+            .get(&(id.to_owned(), channel.to_owned()))
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    pub(super) fn sim_drafted(&self, id: &str) -> Result<Vec<String>, Problem> {
+        let mut out: Vec<String> = self
+            .sessions_here()
+            .drafts
+            .keys()
+            .filter(|(s, _)| s == id)
+            .map(|(_, c)| c.clone())
+            .collect();
+        out.sort();
+        Ok(out)
+    }
+
+    pub(super) fn sim_waiting_notes(&self, id: &str) -> Result<Vec<QueuedNote>, Problem> {
+        Ok(self
+            .sessions_here()
+            .queued
+            .into_iter()
+            .filter(|(s, _)| s == id)
+            .map(|(_, q)| q)
+            .collect())
+    }
+
+    pub(super) fn sim_save_draft(&self, id: &str, channel: &str, d: &Draft) -> Result<(), Problem> {
+        self.with_server_mut(|_, store| {
+            let k = (id.to_owned(), channel.to_owned());
+            if d.text.trim().is_empty() && d.reply_to.is_none() {
+                store.sessions.drafts.remove(&k);
+            } else {
+                store.sessions.drafts.insert(k, d.clone());
+            }
+        });
+        Ok(())
+    }
+
+    /// Queues a note as `quill-core` does: not empty, not too long.
+    pub(super) fn sim_send_note(
+        &self,
+        id: &str,
+        channel: &str,
+        text: &str,
+        reply_to: Option<u64>,
+    ) -> Result<Sending, Problem> {
+        let text = text.trim();
+        if text.is_empty() || text.chars().count() > NOTE_MAX {
+            return Err(refused(
+                codes::SESSION_CHECK_FAILED,
+                "a note can't be empty or longer than the limit",
+            ));
+        }
+        let note = QueuedNote {
+            id: Uuid::now_v7(),
+            channel: channel.to_owned(),
+            text: text.to_owned(),
+            reply_to,
+            refused: None,
+        };
+        let mine = note.id;
+        self.with_server_mut(|_, store| store.sessions.queued.push((id.to_owned(), note)));
+        self.sim_flush(id, Some(mine))
+    }
+
+    /// Sends a session's waiting notes in order, as `drafts::flush` does:
+    /// nothing while the server is down, and it stops at a refusal.
+    pub(super) fn sim_flush(&self, id: &str, mine: Option<Uuid>) -> Result<Sending, Problem> {
+        let sent = self.with_server_mut(|server, store| {
+            if !server.reachable {
+                return None;
+            }
+            let login = store.login.clone().unwrap_or_default();
+            let mut sent = Vec::new();
+            while let Some(i) = store.sessions.queued.iter().position(|(s, _)| s == id) {
+                let q = store.sessions.queued[i].1.clone();
+                if let Some((code, detail)) = q.refused {
+                    return Some(Err((q.id, code, detail)));
+                }
+                let session = server.session_mut(id);
+                let Some((_, handle)) = session.mine(&login).cloned().filter(|_| !session.ended)
+                else {
+                    let why = (
+                        codes::SESSION_CHECK_FAILED,
+                        "the session has ended".to_owned(),
+                    );
+                    store.sessions.queued[i].1.refused = Some(why.clone());
+                    return Some(Err((q.id, why.0, why.1)));
+                };
+                session.write(&handle, &q.channel, &q.text, q.reply_to);
+                store.sessions.queued.remove(i);
+                sent.push(q.id);
+            }
+            Some(Ok(sent))
+        });
+        Ok(match sent {
+            None => Sending::Waiting,
+            Some(Err((at, code, detail))) if mine.is_none_or(|m| m == at) => {
+                Sending::Refused(code, detail)
+            }
+            Some(Err(_)) => Sending::Waiting,
+            Some(Ok(sent)) => {
+                self.live();
+                if mine.is_none_or(|m| sent.contains(&m)) {
+                    Sending::Sent
+                } else {
+                    Sending::Waiting
+                }
+            }
+        })
+    }
+
+    pub(super) fn sim_change_waiting(
+        &self,
+        id: &str,
+        note: Uuid,
+        text: &str,
+    ) -> Result<(), Problem> {
+        self.with_server_mut(|_, store| {
+            let q = store
+                .sessions
+                .queued
+                .iter_mut()
+                .find(|(s, q)| s == id && q.id == note)
+                .ok_or(Problem::Gone)?;
+            q.1.text = text.trim().to_owned();
+            q.1.refused = None;
+            Ok(())
+        })
+    }
+
+    pub(super) fn sim_withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem> {
+        self.with_server_mut(|_, store| {
+            let before = store.sessions.queued.len();
+            store
+                .sessions
+                .queued
+                .retain(|(s, q)| !(s == id && q.id == note));
+            if store.sessions.queued.len() == before {
+                Err(Problem::Gone)
+            } else {
+                Ok(())
+            }
+        })
+    }
+
+    /// What upkeep does once the server can be reached: every session's
+    /// waiting notes go.
+    pub(super) fn sim_flush_all(&self) {
+        let ids: Vec<String> = self
+            .sessions_here()
+            .queued
+            .iter()
+            .map(|(s, _)| s.clone())
+            .collect();
+        for id in ids {
+            let _ = self.sim_flush(&id, None);
+        }
+    }
+
+    /// The notes waiting on this computer, in a session: (text, refused).
+    pub fn waiting_in(&self, id: &str) -> Vec<(String, bool)> {
+        self.sessions_here()
+            .queued
+            .iter()
+            .filter(|(s, _)| s == id)
+            .map(|(_, q)| (q.text.clone(), q.refused.is_some()))
+            .collect()
+    }
+
+    /// The notes in a session, as the server holds them: (author, channel,
+    /// text, answering).
+    pub fn notes_in(&self, domain: &str, id: &str) -> Vec<(String, String, String, Option<u64>)> {
+        self.server(domain, |s| {
+            s.session_mut(id)
+                .notes
+                .iter()
+                .map(|n| {
+                    (
+                        n.author.clone(),
+                        n.channel.clone(),
+                        n.versions.last().cloned().unwrap_or_default(),
+                        n.reply_to,
+                    )
+                })
+                .collect()
+        })
     }
 }

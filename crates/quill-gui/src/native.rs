@@ -11,7 +11,7 @@ use std::{
 
 use quill_certs::RevocationReason;
 use quill_core::{
-    Client, CoreError, Store, StoreError, devices, history,
+    Client, CoreError, Store, StoreError, devices, drafts, history,
     hlc::Hlc,
     keys, requests, sessions,
     store::{KdfParams, KeySetup, KeySource, Unlock, vault::Vault},
@@ -33,6 +33,7 @@ use quill_ui::backend::{
     ChannelView, Inbox, IncomingRequest, KeyChange, Note, SentRequest, SessionStanding,
     SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
 };
+use quill_ui::backend::{Draft, ErrorCode, QueuedNote, Sending};
 use tokio::runtime::Handle;
 use uuid::Uuid;
 
@@ -270,6 +271,40 @@ fn channel_view(c: &history::ChannelInfo) -> ChannelView {
         notes: c.notes,
         unseen: c.unseen,
     }
+}
+
+fn queued_note(q: drafts::Queued) -> QueuedNote {
+    QueuedNote {
+        id: q.id,
+        channel: q.channel,
+        text: q.text,
+        reply_to: q.reply_to,
+        refused: q.refused.map(|r| (ErrorCode(r.code), r.detail)),
+    }
+}
+
+/// What became of note `mine` (if any) after a flush: it went, it waits,
+/// or the server refused it or a note ahead of it.
+fn sending(done: &drafts::Flushed, waiting: &[drafts::Queued], mine: Option<Uuid>) -> Sending {
+    if let Some(id) = done.refused
+        && mine.is_none_or(|m| m == id)
+        && let Some(r) = waiting
+            .iter()
+            .find(|q| q.id == id)
+            .and_then(|q| q.refused.clone())
+    {
+        return Sending::Refused(ErrorCode(r.code), r.detail);
+    }
+    let went = mine.is_none_or(|m| done.sent.iter().any(|(id, _)| *id == m));
+    if went && !done.offline && done.refused.is_none() {
+        Sending::Sent
+    } else {
+        Sending::Waiting
+    }
+}
+
+fn session_gid(id: &str) -> Result<Vec<u8>, Problem> {
+    quill_proto::keys::unb64(id).ok_or_else(|| failed("bad session id"))
 }
 
 fn summary(
@@ -640,9 +675,34 @@ impl NativeBackend {
             let open = open?;
             let name = open.name.clone();
             self.run(async move {
-                work(open.store, open.client)
+                // Requests join, add to and drop MLS groups: one at a time
+                // with upkeep and sessions, as all such work is.
+                let _group = open.exclusive().await;
+                work(open.store.clone(), open.client.clone())
                     .await
                     .map_err(|e| request_problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    /// Like `call_with_store`, one at a time with the server's other MLS
+    /// work (`Open::exclusive`).
+    fn call_locked<'a, T, F, Fut>(&'a self, work: F) -> Call<'a, T>
+    where
+        T: Send + 'static,
+        F: FnOnce(Arc<Store>, Client) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T, CoreError>> + Send + 'static,
+    {
+        let open = self.opened();
+        Box::pin(async move {
+            let open = open?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _group = open.exclusive().await;
+                work(open.store.clone(), open.client.clone())
+                    .await
+                    .map_err(|e| problem(&name, e))
             })
             .await
         })
@@ -1381,6 +1441,7 @@ impl Backend for NativeBackend {
             let open = self.opened()?;
             let name = open.name.clone();
             self.run(async move {
+                let _group = open.exclusive().await;
                 let work = async {
                     let client = &open.client;
                     let me = client
@@ -1472,7 +1533,9 @@ impl Backend for NativeBackend {
     }
 
     fn inbox(&self, prompt: Uuid, held: bool) -> Call<'_, Inbox> {
-        self.call_with_store(move |store, client| async move {
+        // Reading a new request joins its group, using up this device's
+        // KeyPackage: two reads at once would find it gone (#29, 3f-2).
+        self.call_locked(move |store, client| async move {
             let inbox = requests::inbox(&store, &client, prompt, held).await?;
             Ok(Inbox {
                 held: inbox.held,
@@ -1665,6 +1728,106 @@ impl Backend for NativeBackend {
         history::mark_opened(&open.store, &gid).map_err(|e| problem(&open.name, e))
     }
 
+    fn draft(&self, id: &str, channel: &str) -> Result<Draft, Problem> {
+        let open = self.opened()?;
+        let d = drafts::draft(&open.store, &session_gid(id)?, channel)
+            .map_err(|e| problem(&open.name, e))?
+            .unwrap_or_default();
+        Ok(Draft {
+            text: d.text,
+            reply_to: d.reply_to,
+        })
+    }
+
+    fn drafted(&self, id: &str) -> Result<Vec<String>, Problem> {
+        let open = self.opened()?;
+        drafts::drafted(&open.store, &session_gid(id)?).map_err(|e| problem(&open.name, e))
+    }
+
+    fn waiting(&self, id: &str) -> Result<Vec<QueuedNote>, Problem> {
+        let open = self.opened()?;
+        let q =
+            drafts::queued(&open.store, &session_gid(id)?).map_err(|e| problem(&open.name, e))?;
+        Ok(q.into_iter().map(queued_note).collect())
+    }
+
+    fn save_draft(&self, id: &str, channel: &str, draft: &Draft) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let d = drafts::Draft {
+            text: draft.text.clone(),
+            reply_to: draft.reply_to,
+        };
+        drafts::save(&open.store, &session_gid(id)?, channel, &d)
+            .map_err(|e| problem(&open.name, e))
+    }
+
+    fn send_note<'a>(
+        &'a self,
+        id: &'a str,
+        channel: &'a str,
+        text: &'a str,
+        reply_to: Option<u64>,
+    ) -> Call<'a, Sending> {
+        let (id, channel, text) = (id.to_owned(), channel.to_owned(), text.to_owned());
+        Box::pin(async move {
+            let open = self.opened()?;
+            let gid = session_gid(&id)?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _lock = open.exclusive().await;
+                let work = async {
+                    let (store, client) = (&open.store, &open.client);
+                    let q = drafts::queue(store, &gid, &channel, &text, reply_to)?;
+                    let done = drafts::flush(store, client, &id, &gid).await?;
+                    Ok(sending(&done, &drafts::queued(store, &gid)?, Some(q.id)))
+                };
+                work.await.map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, Sending> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            let open = self.opened()?;
+            let gid = session_gid(&id)?;
+            let name = open.name.clone();
+            self.run(async move {
+                let _lock = open.exclusive().await;
+                let work = async {
+                    let (store, client) = (&open.store, &open.client);
+                    let done = drafts::flush(store, client, &id, &gid).await?;
+                    Ok(sending(&done, &drafts::queued(store, &gid)?, None))
+                };
+                work.await.map_err(|e| problem(&name, e))
+            })
+            .await
+        })
+    }
+
+    fn change_waiting(&self, id: &str, note: Uuid, text: &str) -> Result<(), Problem> {
+        let open = self.opened()?;
+        let gid = session_gid(id)?;
+        if !drafts::queued(&open.store, &gid)
+            .map_err(|e| problem(&open.name, e))?
+            .iter()
+            .any(|q| q.id == note)
+        {
+            return Err(Problem::Gone);
+        }
+        drafts::change(&open.store, &gid, note, text).map_err(|e| problem(&open.name, e))
+    }
+
+    fn withdraw_waiting(&self, id: &str, note: Uuid) -> Result<(), Problem> {
+        let open = self.opened()?;
+        match drafts::withdraw(&open.store, &session_gid(id)?, note) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(Problem::Gone),
+            Err(e) => Err(problem(&open.name, e)),
+        }
+    }
+
     fn answers_seen(&self) -> Vec<Uuid> {
         self.opened()
             .ok()
@@ -1688,9 +1851,13 @@ impl Backend for NativeBackend {
             let report = self
                 .run(async move {
                     let _group = open.exclusive().await;
-                    devices::maintain(&open.store, &open.client)
+                    let report = devices::maintain(&open.store, &open.client)
                         .await
-                        .map_err(|e| problem(&name, e))
+                        .map_err(|e| problem(&name, e))?;
+                    // Back in touch: notes written offline go, in order.
+                    // A refusal waits on its note in the session.
+                    let _ = drafts::flush_all(&open.store, &open.client).await;
+                    Ok(report)
                 })
                 .await;
             let (line, tell) = match &report {
@@ -2022,6 +2189,11 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn the_apps_note_limit_is_cores() {
+        assert_eq!(quill_ui::backend::NOTE_MAX, sessions::MAX_MESSAGE_CHARS);
+    }
 
     #[test]
     fn typed_addresses_get_the_right_scheme() {

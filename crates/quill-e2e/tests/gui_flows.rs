@@ -610,6 +610,37 @@ async fn requests_both_ways_on_a_real_server() {
     d.wait_for_text("The lamp went out.").await;
     d.click("Planning").await;
     d.wait_for_text("I'd write the").await;
+
+    // Writing (3f-2): a note, an answer, and a draft kept in the store.
+    d.type_into("note-editor", "Shall we **alternate** nights?")
+        .await;
+    d.click("Send").await;
+    d.wait_for_text("Sent.").await;
+    d.click("Story").await;
+    d.click("Answer @wren_pen's note").await;
+    d.type_into("note-editor", "And the bell rang twice.").await;
+    d.click("Send").await;
+    d.wait_until("the answer goes", |d| {
+        d.attr("note-editor", "value").as_deref() == Some("")
+    })
+    .await;
+    d.type_into("note-editor", "Half a thought").await;
+    d.click("Planning").await;
+    d.click("Story ✎ draft").await;
+    assert_eq!(
+        d.attr("note-editor", "value").as_deref(),
+        Some("Half a thought")
+    );
+    let read = quill_core::sessions::read(&wren, &wren_c, &session)
+        .await
+        .unwrap();
+    let (asked, said, answer) = (&read.messages[1], &read.messages[2], &read.messages[3]);
+    assert_eq!(
+        (said.content.as_str(), said.channel.as_str()),
+        ("Shall we **alternate** nights?", "planning")
+    );
+    assert_eq!(answer.content, "And the bell rang twice.");
+    assert_eq!(answer.in_reply_to.as_deref(), Some(asked.id.as_str()));
     d.click("Home").await;
 
     // Answering: Wren asks on Ink's prompt, live, and Ink accepts.

@@ -17,6 +17,9 @@
 //! - `0x04` + channel name: the last note position this device showed in
 //!   it (unread counts are kept here only, never sent anywhere);
 //! - `0x05` + blob URL: an attachment still to fetch (2i).
+//! - `0x06`: that this device has opened the session (3f).
+//! - `0x07` + channel name, `0x08` + queue id: a draft, and a note waiting
+//!   to be sent (3f-2, [`crate::drafts`]).
 //!
 //! Channels (2h) live only inside the encrypted activities. `story` and
 //! `planning` always exist; naming a channel (`Create` of a `wr:Channel`)
@@ -47,7 +50,7 @@ fn err(msg: impl Into<String>) -> CoreError {
     CoreError::Keys(quill_proto::codes::HISTORY_CHECK_FAILED, msg.into())
 }
 
-fn prefix(gid: &[u8], kind: u8) -> Vec<u8> {
+pub(crate) fn prefix(gid: &[u8], kind: u8) -> Vec<u8> {
     let mut k = Vec::with_capacity(gid.len() + 2);
     k.push(u8::try_from(gid.len()).unwrap_or(u8::MAX));
     k.extend_from_slice(gid);
@@ -55,7 +58,7 @@ fn prefix(gid: &[u8], kind: u8) -> Vec<u8> {
     k
 }
 
-fn key(gid: &[u8], kind: u8, rest: &[u8]) -> Vec<u8> {
+pub(crate) fn key(gid: &[u8], kind: u8, rest: &[u8]) -> Vec<u8> {
     let mut k = prefix(gid, kind);
     k.extend_from_slice(rest);
     k
@@ -118,13 +121,16 @@ pub struct From<'a> {
     pub own: bool,
 }
 
-fn get<T: for<'de> Deserialize<'de>>(p: &Provider<'_>, k: &[u8]) -> Result<Option<T>, CoreError> {
+pub(crate) fn get<T: for<'de> Deserialize<'de>>(
+    p: &Provider<'_>,
+    k: &[u8],
+) -> Result<Option<T>, CoreError> {
     p.get(Table::Messages, k)?
         .map(|v| serde_json::from_slice(&v).map_err(|_| err("a stored message is damaged")))
         .transpose()
 }
 
-fn put<T: Serialize>(p: &Provider<'_>, k: &[u8], v: &T) -> Result<(), CoreError> {
+pub(crate) fn put<T: Serialize>(p: &Provider<'_>, k: &[u8], v: &T) -> Result<(), CoreError> {
     let bytes = Zeroizing::new(serde_json::to_vec(v).map_err(|_| err("encoding"))?);
     p.set(Table::Messages, k, Some(bytes.to_vec()))
 }
