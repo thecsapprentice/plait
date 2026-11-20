@@ -15,8 +15,8 @@ use uuid::Uuid;
 
 use super::{Sim, SimServer, refused};
 use crate::backend::{
-    ChannelView, Draft, NOTE_MAX, Note, NoteVersion, Problem, QueuedNote, Sending, SessionStanding,
-    SessionSummary, SessionView, Writer, codes,
+    ChannelView, Draft, NOTE_MAX, Note, NoteVersion, Problem, QueuedNote, SafetyNumbers, Sending,
+    SessionStanding, SessionSummary, SessionView, Verification, Writer, codes,
 };
 
 /// The channels every session has.
@@ -468,12 +468,19 @@ impl Sim {
             })
             .collect();
         let here = self.sessions_here();
+        let verification = summary
+            .partner
+            .as_ref()
+            .map_or(Verification::Unverified, |p| {
+                self.verification(&server, &p.handle)
+            });
         Ok(SessionView {
             channels: Self::channels_of(&here, s, &me),
             summary,
             notes,
             held_back: false,
             history_missing: false,
+            verification,
         })
     }
 
@@ -702,6 +709,33 @@ impl Sim {
         })?;
         self.live();
         Ok(())
+    }
+
+    /// The session's safety numbers, as `sessions::safety_numbers` gives
+    /// them; `verify` marks the other writer verified, as
+    /// `confirm_verified` does. The 6 words follow the session's keys,
+    /// which in Sim never change.
+    pub(super) fn sim_safety_numbers(
+        &self,
+        id: &str,
+        verify: bool,
+    ) -> Result<SafetyNumbers, Problem> {
+        let view = self.sim_session(id)?;
+        let partner = view.summary.partner.ok_or_else(|| {
+            refused(
+                codes::SESSION_CHECK_FAILED,
+                "the other writer has left this session",
+            )
+        })?;
+        let (identity, verified) =
+            self.sim_identity_check(&view.summary.me.handle, &partner.handle, verify)?;
+        let mut check = super::requests::words((id, 1), ("epoch", 1));
+        check.truncate(6);
+        Ok(SafetyNumbers {
+            identity,
+            check,
+            verified,
+        })
     }
 
     /// Names a channel or describes it again, refused as

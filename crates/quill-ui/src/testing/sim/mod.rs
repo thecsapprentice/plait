@@ -997,6 +997,14 @@ impl Backend for Sim {
         now(self.sim_name_channel(id, name, about))
     }
 
+    fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        now(self.sim_safety_numbers(id, false))
+    }
+
+    fn confirm_verified<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        now(self.sim_safety_numbers(id, true))
+    }
+
     fn answers_seen(&self) -> Vec<Uuid> {
         self.open_store()
             .map(|(_, s, _)| s.requests.answers_seen)
