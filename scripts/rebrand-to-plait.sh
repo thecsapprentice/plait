@@ -61,9 +61,15 @@ phase_brand() {
   files_matching 'quill|Quill|QUILL' | while read -r f; do
     sed -E -i -e 's/QUILL/PLAIT/g' -e 's/Quill/Plait/g' -e 's/quill/plait/g' "$f"
   done
+  # Files named for the brand, such as a binary's src/bin/quill-*.rs.
+  git ls-files -- . "${EXCLUDE[@]}" | grep -i quill | while read -r f; do
+    git mv "$f" "$(dirname "$f")/$(basename "$f" | sed 's/quill/plait/g; s/Quill/Plait/g')"
+  done
 }
 
 phase_audit() {
+  echo "Files still named quill (none expected):"
+  git ls-files -- . ':!docs/design/**' ':!assets/brand/**' | grep -i quill || true
   echo "Still saying quill (each should be in the guide's keep list):"
   git grep -nIi quill -- . ':!docs/design/**' ':!assets/brand/**' \
     ':!scripts/rebrand-to-plait.sh' ':!docs/rebrand-plait.md' || true
