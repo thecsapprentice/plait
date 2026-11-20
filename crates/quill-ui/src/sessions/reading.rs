@@ -12,12 +12,15 @@ use super::{
     changing::{ChangeLine, History, Last, NoteEditor},
     channels::{ChannelForm, Naming},
     compose::{Composer, WaitingNote},
-    reload, standing_line, tab_label,
+    reload,
+    safety::SafetyPanel,
+    standing_line, tab_label,
 };
 use crate::{
     app::{ProblemLine, use_ui},
-    backend::{Note, Problem, QueuedNote, SessionView},
+    backend::{Note, Problem, QueuedNote, SessionView, Verification},
     markdown::{Markdown, plain_text},
+    requests::KeyCheck,
 };
 
 /// When a note was written, in this computer's time zone: "Nov 2, 2026,
@@ -49,6 +52,10 @@ pub fn SessionPage(id: String) -> Element {
     let here = use_signal(|| 0u64);
     // A channel being named or described, in a form above the notes.
     let mut naming = use_signal(|| None::<Naming>);
+    // The safety numbers, opened from the heading; and a changed key being
+    // checked from the notice that says so.
+    let mut safety = use_signal(|| false);
+    let mut checking = use_signal(|| false);
     // Focus mode is for this session's editor: leaving the session ends it.
     use_drop(move || model.write().sessions.focus = false);
 
@@ -220,12 +227,61 @@ pub fn SessionPage(id: String) -> Element {
         names.get(to).cloned()
     };
     let with = s.partner.as_ref().map(|p| p.name()).unwrap_or_default();
+    let as_persona = model
+        .read()
+        .personas()
+        .iter()
+        .find(|p| p.persona.handle == s.me.handle)
+        .map(|p| p.persona.id);
     rsx! {
         div { class: "session-head",
         {back}
         h1 { "{heading}" }
         if let Some((_, t)) = &s.prompt {
             p { class: "lede", "On “{t}”." }
+        }
+        if let Some(p) = s.partner.clone() {
+            if v.verification == Verification::KeyChanged {
+                div { class: "notice", role: "alert",
+                    p {
+                        "@{p.handle}'s identity key changed since you compared safety numbers. "
+                        "Usually that's because they started over on a new computer; it could also be someone passing as them."
+                    }
+                    if checking() {
+                        if let Some(persona) = as_persona {
+                            KeyCheck {
+                                handle: p.handle.clone(),
+                                as_persona: persona,
+                                on_done: move |_| {
+                                    checking.set(false);
+                                    reload(backend.clone(), model);
+                                },
+                            }
+                        }
+                    } else {
+                        div { class: "actions",
+                            button { class: "secondary", onclick: move |_| checking.set(true), "Check the new key" }
+                        }
+                    }
+                }
+            } else if safety() {
+                SafetyPanel {
+                    id: id.clone(),
+                    handle: p.handle.clone(),
+                    as_persona,
+                    on_close: move |()| safety.set(false),
+                }
+            } else {
+                p { class: "verification",
+                    if v.verification == Verification::Verified {
+                        span { class: "verified", "✓ Verified on this computer" }
+                        " "
+                        button { class: "link", onclick: move |_| safety.set(true), "Safety numbers" }
+                    } else {
+                        button { class: "link", onclick: move |_| safety.set(true), "Compare safety numbers" }
+                    }
+                }
+            }
         }
         if s.ended {
             div { class: "notice", role: "status",

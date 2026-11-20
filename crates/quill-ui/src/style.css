@@ -518,6 +518,10 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .channel-about { display: flex; gap: var(--space-2); align-items: baseline; flex-wrap: wrap; }
 .channel-about .hint { margin: 0; }
 .channel-form { max-width: var(--width-form); }
+/* Safety numbers: offered under the session's heading, never in the way. */
+.verification { margin: var(--space-2) 0 0; font-size: var(--text-sm); }
+.verified { color: var(--accent); font-weight: 600; }
+.panel.safety { max-width: var(--width-read); margin-top: var(--space-3); }
 .notes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .note header { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .note .name { font-weight: 600; }

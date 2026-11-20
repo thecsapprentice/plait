@@ -19,6 +19,7 @@ mod channels;
 mod compose;
 pub(crate) mod live;
 mod reading;
+mod safety;
 
 /// Loads the open server's sessions into the model.
 pub async fn load(b: &dyn Backend, mut model: Signal<Model>, server: Uuid) -> Result<(), Problem> {
