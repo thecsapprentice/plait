@@ -190,7 +190,7 @@ fn pages_centre_and_a_session_has_room() {
             .unwrap_or_else(|| panic!("a `{sel}` rule"))
     };
     assert!(rule(".page").contains("margin-inline: auto"));
-    assert!(rule(".page.session").contains("max-width: 76rem"));
+    assert!(rule(".page.session").contains("var(--width-write)"));
 }
 
 /// Found by hand (3f-2): in Write and preview the preview's first paragraph
@@ -205,4 +205,22 @@ fn the_side_by_side_preview_lines_up_with_the_editor() {
         ),
         "no first-child rule for the side-by-side preview"
     );
+}
+
+/// Found by hand (3f-2): Write and preview split Live's width in two. When
+/// there's room, the composer and the session page widen so each box is as
+/// wide as Live's widest, in focus mode too.
+#[test]
+fn write_and_preview_boxes_are_each_as_wide_as_live() {
+    let rule = |sel: &str| {
+        crate::STYLE
+            .lines()
+            .find(|l| l.starts_with(&format!("{sel} {{")))
+            .unwrap_or_else(|| panic!("a `{sel}` rule"))
+    };
+    assert!(rule(".composer").contains("max-width: var(--width-write)"));
+    assert!(rule(".composer:has(.split)").contains("2 * var(--width-write)"));
+    assert!(rule(".page.session:has(.composer .split)").contains("2 * var(--width-write)"));
+    assert!(rule(".frame.focus .composer").contains("var(--width-focus)"));
+    assert!(rule(".frame.focus .composer:has(.split)").contains("2 * var(--width-focus)"));
 }
