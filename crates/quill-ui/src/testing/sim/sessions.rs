@@ -802,6 +802,11 @@ impl Sim {
             .collect()
     }
 
+    /// Whether a session has ended, on the server.
+    pub fn session_ended(&self, domain: &str, id: &str) -> bool {
+        self.server(domain, |s| s.session_mut(id).ended)
+    }
+
     /// The named channels in a session beyond Story and Planning, as the
     /// server holds them, with their descriptions.
     pub fn channels_in(&self, domain: &str, id: &str) -> Vec<(String, Option<String>)> {

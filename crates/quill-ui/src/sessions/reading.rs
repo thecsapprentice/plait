@@ -56,6 +56,9 @@ pub fn SessionPage(id: String) -> Element {
     // checked from the notice that says so.
     let mut safety = use_signal(|| false);
     let mut checking = use_signal(|| false);
+    // Leaving, asked once in place; and why it didn't go, if it didn't.
+    let mut leaving = use_signal(|| false);
+    let mut leave_problem = use_signal(|| None::<Problem>);
     // Focus mode is for this session's editor: leaving the session ends it.
     use_drop(move || model.write().sessions.focus = false);
 
@@ -227,6 +230,21 @@ pub fn SessionPage(id: String) -> Element {
         names.get(to).cloned()
     };
     let with = s.partner.as_ref().map(|p| p.name()).unwrap_or_default();
+    let b = backend.clone();
+    let sid = id.clone();
+    let leave = move |_| {
+        let (b, sid) = (b.clone(), sid.clone());
+        spawn(async move {
+            match b.leave_session(&sid).await {
+                Ok(()) => {
+                    leaving.set(false);
+                    leave_problem.set(None);
+                    reload(b, model);
+                }
+                Err(p) => leave_problem.set(Some(p)),
+            }
+        });
+    };
     let as_persona = model
         .read()
         .personas()
@@ -287,6 +305,31 @@ pub fn SessionPage(id: String) -> Element {
         if s.ended {
             div { class: "notice", role: "status",
                 "This session has ended. What's written stays readable here."
+            }
+        } else if leaving() {
+            div { class: "notice", role: "alert",
+                p {
+                    "Leave your session with {with}? It ends for both of you: neither of you can write in it again. "
+                    "What's written stays readable here."
+                }
+                if let Some(p) = leave_problem() {
+                    ProblemLine { problem: p }
+                }
+                div { class: "actions",
+                    button { class: "danger", onclick: leave, "Leave it" }
+                    button {
+                        class: "quiet",
+                        onclick: move |_| {
+                            leaving.set(false);
+                            leave_problem.set(None);
+                        },
+                        "Stay"
+                    }
+                }
+            }
+        } else {
+            p { class: "session-actions",
+                button { class: "quiet", onclick: move |_| leaving.set(true), "Leave the session…" }
             }
         }
         if v.held_back {
