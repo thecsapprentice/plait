@@ -9,6 +9,10 @@
   formats, client API outline, prompt reports and conformance artifacts.
 - [**Roadmap**](roadmap.md): every phase split into sub-phases, one pull
   request each, with status and "done when" checks.
+- [**Rebranding Quill as Plait**](rebrand-plait.md): why the project is
+  being renamed, which words change where (the interface keeps writing
+  words; weaving stays in the art and docs), the keep list, and the steps.
+  The brand assets are in [`assets/brand/`](../assets/brand/README.md).
 - [**What the server keeps**](server-data.md): every column of the database,
   what it holds and why that's acceptable; the Phase 2 database audit.
 - [**OpenAPI file**](openapi.json): the client API, generated from the
