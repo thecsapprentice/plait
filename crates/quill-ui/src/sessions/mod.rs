@@ -14,6 +14,7 @@ use crate::{
     model::{Model, Section},
 };
 
+mod changing;
 mod compose;
 pub(crate) mod live;
 mod reading;

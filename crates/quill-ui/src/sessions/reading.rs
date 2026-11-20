@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use quill_board_ui::short_date;
 
 use super::{
+    changing::{ChangeLine, History, Last, NoteEditor},
     compose::{Composer, WaitingNote},
     reload, standing_line,
 };
@@ -325,6 +326,7 @@ pub fn SessionPage(id: String) -> Element {
                         for n in shown {
                             NoteItem {
                                 key: "{n.seq}",
+                                id: id.clone(),
                                 answering: n.reply_to.and_then(|r| firsts.get(&r).cloned().map(|f| (r, f))),
                                 when: when(offset, n.at),
                                 on_mounted: move |(seq, el): (u64, Rc<MountedData>)| {
@@ -340,6 +342,7 @@ pub fn SessionPage(id: String) -> Element {
                                     }
                                 },
                                 can_answer: can_write,
+                                can_change: can_write,
                                 on_reply: move |seq: u64| {
                                     answering.set(Some(seq));
                                     *focus_editor.write() += 1;
@@ -394,6 +397,8 @@ fn first_line(text: &str) -> String {
 
 #[component]
 fn NoteItem(
+    /// The session's id.
+    id: String,
     n: Note,
     when: String,
     /// The note it answers: its number, channel and first line.
@@ -402,8 +407,13 @@ fn NoteItem(
     on_answer: EventHandler<(u64, String)>,
     /// Whether the writer can answer it (the session is still going).
     can_answer: bool,
+    /// Whether the writer can change their notes (the same).
+    can_change: bool,
     on_reply: EventHandler<u64>,
 ) -> Element {
+    let mut editing = use_signal(|| false);
+    let mut last = use_signal(|| None::<Last>);
+    let mut history = use_signal(|| false);
     let author = if n.mine {
         "your".to_owned()
     } else {
@@ -419,7 +429,25 @@ fn NoteItem(
                 span { class: "name", if n.mine { "You" } else { "{n.author.name()}" } }
                 span { class: "hint", " {when}" }
                 if n.edited && !n.deleted {
-                    span { class: "tag", "Edited" }
+                    button {
+                        class: "tag tag-button",
+                        aria_expanded: if history() { "true" } else { "false" },
+                        onclick: move |_| history.toggle(),
+                        "Edited"
+                    }
+                }
+                span { class: "note-actions",
+                if n.mine && can_change && !n.deleted && !editing() {
+                    button {
+                        class: "quiet note-action",
+                        aria_label: "Edit your note",
+                        title: "Edit",
+                        onclick: move |_| {
+                            last.set(None);
+                            editing.set(true);
+                        },
+                        span { aria_hidden: "true", "✎" }
+                    }
                 }
                 if can_answer && !n.deleted {
                     button {
@@ -429,6 +457,7 @@ fn NoteItem(
                         onclick: move |_| on_reply.call(seq),
                         span { aria_hidden: "true", "↩" }
                     }
+                }
                 }
             }
             if let Some((to, (ch, first))) = answering {
@@ -441,10 +470,34 @@ fn NoteItem(
                     "{first}"
                 }
             }
-            if n.deleted {
-                p { class: "hint", "This note was deleted." }
+            if editing() && !n.deleted {
+                NoteEditor {
+                    id: id.clone(),
+                    seq,
+                    content: n.content.clone(),
+                    on_done: move |change: Option<Last>| {
+                        editing.set(false);
+                        if change.is_some() {
+                            last.set(change);
+                        }
+                    },
+                }
+            } else if n.deleted {
+                p { class: "hint",
+                    "This note was deleted. "
+                    button {
+                        class: "link",
+                        aria_expanded: if history() { "true" } else { "false" },
+                        onclick: move |_| history.toggle(),
+                        if history() { "Hide its history" } else { "Show its history" }
+                    }
+                }
             } else {
                 div { class: "pitch", Markdown { source: n.content.clone() } }
+            }
+            ChangeLine { id: id.clone(), seq, last }
+            if history() {
+                History { id: id.clone(), seq, stamp: format!("{}{}{}", n.deleted, n.edited, n.content) }
             }
             if n.attachments > 0 {
                 p { class: "hint",
