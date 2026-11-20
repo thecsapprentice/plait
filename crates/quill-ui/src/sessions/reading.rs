@@ -10,8 +10,9 @@ use quill_board_ui::short_date;
 
 use super::{
     changing::{ChangeLine, History, Last, NoteEditor},
+    channels::{ChannelForm, Naming},
     compose::{Composer, WaitingNote},
-    reload, standing_line,
+    reload, standing_line, tab_label,
 };
 use crate::{
     app::{ProblemLine, use_ui},
@@ -24,15 +25,6 @@ use crate::{
 pub(crate) fn when(offset: time::UtcOffset, at: time::OffsetDateTime) -> String {
     let at = at.to_offset(offset);
     format!("{}, {:02}:{:02}", short_date(at), at.hour(), at.minute())
-}
-
-/// A channel's name as a tab: "Story", "Planning", or as named.
-pub(crate) fn tab_label(name: &str) -> String {
-    let mut c = name.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().chain(c).collect(),
-        None => String::new(),
-    }
 }
 
 #[component]
@@ -55,6 +47,8 @@ pub fn SessionPage(id: String) -> Element {
     // Bumped when drafts or waiting notes change here; they're read from
     // this computer, apart from the session (so they show offline too).
     let here = use_signal(|| 0u64);
+    // A channel being named or described, in a form above the notes.
+    let mut naming = use_signal(|| None::<Naming>);
     // Focus mode is for this session's editor: leaving the session ends it.
     use_drop(move || model.write().sessions.focus = false);
 
@@ -253,6 +247,7 @@ pub fn SessionPage(id: String) -> Element {
             }
         }
         div { class: "session-body",
+            div { class: "channel-list",
             div {
                 class: "channels",
                 id: "channels",
@@ -315,9 +310,47 @@ pub fn SessionPage(id: String) -> Element {
                     }
                 }
             }
+            if can_write {
+                button {
+                    class: "quiet new-channel",
+                    onclick: move |_| naming.set(Some(Naming::New)),
+                    "New channel"
+                }
+            }
+            }
             section { class: "channel", role: "tabpanel", aria_label: "{tab_label(&current)}",
-                if let Some(d) = summary {
-                    p { class: "hint", "{d}" }
+                if let Some(form) = naming() {
+                    ChannelForm {
+                        key: "{form:?}",
+                        id: id.clone(),
+                        naming: form,
+                        taken: v.channels.iter().map(|c| c.name.clone()).collect::<Vec<_>>(),
+                        on_done: move |to: Option<String>| {
+                            naming.set(None);
+                            if let Some(to) = to {
+                                channel.set(to);
+                            }
+                        },
+                    }
+                } else if summary.is_some() || can_write {
+                    div { class: "channel-about",
+                        if let Some(d) = summary.clone() {
+                            p { class: "hint", "{d}" }
+                        }
+                        if can_write {
+                            button {
+                                class: "link",
+                                onclick: {
+                                    let (name, about) = (current.clone(), summary.clone());
+                                    move |_| naming.set(Some(Naming::Describe {
+                                        name: name.clone(),
+                                        about: about.clone(),
+                                    }))
+                                },
+                                if summary.is_some() { "Change the description" } else { "Describe this channel" }
+                            }
+                        }
+                    }
                 }
                 if shown.is_empty() {
                     p { class: "coming", "Nothing in {tab_label(&current)} yet." }

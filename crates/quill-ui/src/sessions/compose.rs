@@ -144,7 +144,7 @@ pub fn Composer(
     let (backend, mut model) = use_ui();
     // A memo, so other changes to the model don't re-render the editor.
     let focused = use_memo(move || model.read().sessions.focus)();
-    let label = super::reading::tab_label(&channel);
+    let label = super::tab_label(&channel);
 
     // The draft as last typed, and whether it's changed since it was kept.
     let b = backend.clone();

@@ -132,6 +132,46 @@ pub fn display_name(input: &str) -> Check {
     }
 }
 
+/// What a channel typed as "World building" is called: lower case, with
+/// spaces and underscores as single hyphens (`validate::channel`'s form).
+pub fn channel_name(input: &str) -> String {
+    let mut out = String::new();
+    for c in input.trim().chars() {
+        let c = if c.is_whitespace() || c == '_' {
+            '-'
+        } else {
+            c.to_ascii_lowercase()
+        };
+        if !(c == '-' && (out.is_empty() || out.ends_with('-'))) {
+            out.push(c);
+        }
+    }
+    out.trim_end_matches('-').to_owned()
+}
+
+/// A new channel's name, as typed. `taken` are the session's channels.
+pub fn channel(input: &str, taken: &[String]) -> Check {
+    let max = validate::CHANNEL_MAX_CHARS;
+    let name = channel_name(input);
+    if name.is_empty() {
+        return Check::fine(format!("Up to {max} letters a to z, numbers and spaces."));
+    }
+    let shown = crate::sessions::tab_label(&name);
+    if taken.contains(&name) {
+        return Check::wrong(format!("There's already a channel called {shown}."));
+    }
+    if name.len() > max {
+        return Check::wrong(format!(
+            "That's {} characters; the most is {max}.",
+            name.len()
+        ));
+    }
+    if validate::channel(&name).is_err() {
+        return Check::wrong("Only the letters a to z, numbers and spaces work here.");
+    }
+    Check::fine(format!("The tab will say {shown}."))
+}
+
 /// Handles near one that's taken, for the writer to pick from. The server
 /// may have some of these too; trying one says so.
 pub fn suggestions(taken: &str) -> Vec<String> {
@@ -154,6 +194,24 @@ pub fn suggestions(taken: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_channel_is_named_as_typed() {
+        assert_eq!(channel_name("  World  building "), "world-building");
+        assert_eq!(channel_name("Act_2 - notes"), "act-2-notes");
+        let taken = ["story".to_owned(), "planning".to_owned()];
+        assert!(!channel("", &taken).invalid);
+        assert_eq!(
+            channel("World building", &taken).hint,
+            "The tab will say World building."
+        );
+        assert_eq!(
+            channel("Story", &taken).hint,
+            "There's already a channel called Story."
+        );
+        assert!(channel("Café!", &taken).invalid);
+        assert!(channel(&"a".repeat(33), &taken).invalid);
+    }
 
     #[test]
     fn a_length_limit_is_said_as_text_is_typed() {

@@ -500,18 +500,24 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 /* Channels run down the side of the notes, each with its unread count;
    above them on a narrow window. */
 .session-body { display: grid; grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
-.channels { display: flex; flex-direction: column; gap: 2px; position: sticky; top: var(--space-4); }
+/* The channel tabs, with New channel under them (outside the tab list). */
+.channel-list { display: flex; flex-direction: column; gap: var(--space-2); position: sticky; top: var(--space-4); }
+.channel-list .new-channel { align-self: flex-start; }
+.channels { display: flex; flex-direction: column; gap: 2px; }
 .channels [role="tab"] { display: flex; align-items: center; justify-content: space-between; text-align: left; border: 0; border-left: 3px solid transparent; border-radius: 0 var(--radius-s) var(--radius-s) 0; background: none; padding: var(--space-2) var(--space-3); min-height: var(--control); color: var(--muted); cursor: pointer; font: inherit; }
 .channels [role="tab"]:hover { color: var(--ink); background: var(--surface); }
 .channels .badge { margin-left: var(--space-2); }
 .channels [role="tab"][aria-selected="true"] { color: var(--ink); background: var(--surface); border-left-color: var(--accent); font-weight: 600; }
 @media (max-width: 760px) {
   .session-body { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
-  .channels { position: static; }
+  .channel-list { position: static; }
 }
 .channel { min-width: 0; }
 /* Notes keep a reading width; the composer takes the whole column. */
-.channel .notes, .channel > .hint, .channel > .coming { max-width: var(--width-read); }
+.channel .notes, .channel > .hint, .channel > .coming, .channel > .channel-about { max-width: var(--width-read); }
+.channel-about { display: flex; gap: var(--space-2); align-items: baseline; flex-wrap: wrap; }
+.channel-about .hint { margin: 0; }
+.channel-form { max-width: var(--width-form); }
 .notes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .note header { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .note .name { font-weight: 600; }
@@ -578,8 +584,8 @@ textarea.over::selection { background: color-mix(in srgb, var(--accent) 28%, tra
    where it writes. Esc or "Leave focus" brings the rest back. */
 .focus-where { margin: 0; color: var(--muted); font-size: var(--text-sm); }
 .frame.focus { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "main" "status"; }
-.frame.focus .nav, .frame.focus .session-head, .frame.focus .channels,
-.frame.focus .channel > .hint, .frame.focus .channel > .coming,
+.frame.focus .nav, .frame.focus .session-head, .frame.focus .channel-list,
+.frame.focus .channel > .hint, .frame.focus .channel > .coming, .frame.focus .channel > .channel-about,
 .frame.focus .notes:not(.waiting-notes) { display: none; }
 .frame.focus .page { max-width: none; }
 .frame.focus .session-body { grid-template-columns: minmax(0, 1fr); margin-top: 0; }

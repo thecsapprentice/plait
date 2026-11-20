@@ -15,6 +15,7 @@ use crate::{
 };
 
 mod changing;
+mod channels;
 mod compose;
 pub(crate) mod live;
 mod reading;
@@ -24,6 +25,16 @@ pub async fn load(b: &dyn Backend, mut model: Signal<Model>, server: Uuid) -> Re
     let list = b.sessions().await?;
     model.write().sessions_loaded(server, list);
     Ok(())
+}
+
+/// A channel's name as a tab: "Story", "Planning", or as named, with
+/// hyphens as spaces ("world-building" is "World building").
+pub(crate) fn tab_label(name: &str) -> String {
+    let mut c = name.chars().map(|c| if c == '-' { ' ' } else { c });
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
 }
 
 /// Loads in the background; on failure the screen keeps what it had.
