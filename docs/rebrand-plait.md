@@ -8,6 +8,12 @@ rename covers, which words change where, and how to carry it out. The
 brand assets and their usage rules are in
 [`assets/brand/README.md`](../assets/brand/README.md).
 
+**Order.** Decided 2026-11-02 to follow the remaining desktop GUI phases
+(3f to 3i); changed 2026-11-19 to start once 3f was done, before 3g, 3h
+and 3i, while local data can still change format freely. New code that
+brings in a branded identifier the script can't find is marked
+`REBRAND(R3)` and listed on #84 (`git grep -n "REBRAND("`).
+
 ## Why Plait, and why weaving
 
 "Quill" is taken in our own space: an IndieWeb publishing client
