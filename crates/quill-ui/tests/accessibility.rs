@@ -287,7 +287,8 @@ async fn sessions() {
     d.wait_for_text("My line.").await;
     d.click("Edit your note").await;
     d.assert_accessible("changing a note");
-    d.type_into(&format!("edit-{mine}"), "My better line.").await;
+    d.type_into(&format!("edit-{mine}"), "My better line.")
+        .await;
     d.click("Save the change").await;
     d.wait_for_text("Edited.").await;
     d.assert_accessible("a note just changed, with Undo");

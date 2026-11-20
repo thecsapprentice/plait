@@ -50,6 +50,9 @@ async fn comparing_is_offered_and_they_match_verifies() {
     d.click("Compare safety numbers").await;
     d.wait_for_text("Your 12 words with @wren").await;
     assert!(d.has_text("And 6 for the session's keys now"));
+    // Found by hand: the 6 were styled as device-linking words, unlike
+    // the 12 beside them.
+    assert!(!d.has_element_with_class("link-words"));
     d.click("They match").await;
     d.wait_for_text("You marked @wren verified on this computer.")
         .await;

@@ -82,7 +82,7 @@ pub fn SafetyPanel(
             p { class: "hint",
                 "And 6 for the session's keys now. They change when either of you adds or removes a device, so compare them at the same time."
             }
-            ol { class: "link-words", aria_label: "The session's 6 words",
+            ol { class: "words", aria_label: "The session's 6 words",
                 for (i, w) in n.check.iter().enumerate() {
                     li { key: "{i}", "{w}" }
                 }

@@ -209,7 +209,7 @@ pub fn History(id: String, seq: u64, stamp: String) -> Element {
         None => rsx! { p { class: "coming", "Reading its history…" } },
         Some(Err(p)) => rsx! { ProblemLine { problem: p } },
         Some(Ok(v)) => rsx! {
-            p { class: "hint", id: "versions-{seq}", "Every version, oldest first." }
+            p { class: "hint versions-caption", id: "versions-{seq}", "Every version, oldest first." }
             ol { class: "versions", aria_labelledby: "versions-{seq}",
                 for (i, version) in v.into_iter().enumerate() {
                     li { key: "{i}",
