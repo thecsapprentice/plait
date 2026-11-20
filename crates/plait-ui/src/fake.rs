@@ -1,0 +1,414 @@
+//! A backend held in memory, for the views' tests: every call answers at
+//! once from what the test set up.
+
+use std::{cell::RefCell, future::Future, pin::Pin};
+
+use plait_proto::board::Maturity;
+use uuid::Uuid;
+
+use crate::backend::{
+    AccountNotice, AccountSettings, CreatePrompt, CreateReport, Prompt, PromptPage, PromptQuery,
+    Tag, TagNamespace, TagPage, TagPageQuery, TagPolicy, TagQuery, UpdatePrompt,
+};
+use crate::backend::{
+    AppSettings, Backend, BoardSettings, Call, Details, Keys, Persona, PersonaState, Problem,
+    Protection, ServerEntry, ServerInfo, ServerRules, Standing, Step, Theme,
+};
+
+pub struct Fake {
+    pub servers: RefCell<Vec<ServerEntry>>,
+    pub current: RefCell<Option<Uuid>>,
+    pub standing: RefCell<Standing>,
+    pub settings: RefCell<AppSettings>,
+}
+
+pub fn persona(handle: &str, keys: Keys) -> PersonaState {
+    PersonaState {
+        persona: Persona {
+            id: Uuid::new_v4(),
+            handle: handle.into(),
+            display_name: Some(format!("{handle} (display)")),
+            summary: Some("Writes about foxes.".into()),
+            actor_uri: format!("https://writers.example/actors/{handle}"),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+        },
+        keys,
+    }
+}
+
+impl Fake {
+    /// One server, signed in as `ink` with `personas`.
+    pub fn signed_in(personas: Vec<PersonaState>) -> Self {
+        let id = Uuid::new_v4();
+        Self {
+            servers: RefCell::new(vec![ServerEntry {
+                id,
+                address: "https://writers.example".into(),
+                name: "writers.example".into(),
+                login: Some("ink".into()),
+            }]),
+            current: RefCell::new(Some(id)),
+            standing: RefCell::new(Standing::SignedIn {
+                login: "ink".into(),
+                personas,
+            }),
+            settings: RefCell::new(AppSettings {
+                theme: Theme::System,
+                text_size: 100,
+                advanced: false,
+                stores_folder: "/home/ink/.local/share/plait-gui/stores".into(),
+            }),
+        }
+    }
+
+    pub fn empty() -> Self {
+        let f = Self::signed_in(Vec::new());
+        f.servers.borrow_mut().clear();
+        *f.current.borrow_mut() = None;
+        *f.standing.borrow_mut() = Standing::SignedOut;
+        f
+    }
+}
+
+fn ready<'a, T: 'a>(v: Result<T, Problem>) -> Call<'a, T> {
+    Box::pin(async move { v })
+}
+
+impl Backend for Fake {
+    fn servers(&self) -> Vec<ServerEntry> {
+        self.servers.borrow().clone()
+    }
+    fn current(&self) -> Option<Uuid> {
+        *self.current.borrow()
+    }
+    fn check_server<'a>(&'a self, address: &'a str) -> Call<'a, ServerInfo> {
+        ready(Ok(ServerInfo {
+            address: address.into(),
+            domain: address.into(),
+            registration_open: true,
+            has_rules: true,
+            rules_to_accept: true,
+            software: "quill".into(),
+            version: "0.0.0".into(),
+        }))
+    }
+    fn add_server<'a>(&'a self, _: &'a str, _: Option<&'a str>) -> Call<'a, ServerEntry> {
+        ready(Err(Problem::NeedsPassphrase))
+    }
+    fn open_server(&self, _: Uuid) -> Call<'_, Standing> {
+        ready(Ok(self.standing.borrow().clone()))
+    }
+    fn unlock<'a>(&'a self, _: &'a str) -> Call<'a, Standing> {
+        ready(Ok(self.standing.borrow().clone()))
+    }
+    fn remove_server(&self, _: Uuid) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn rename_server(&self, _: Uuid, _: &str) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn keychain_available(&self) -> bool {
+        true
+    }
+    fn protection(&self) -> Option<Protection> {
+        Some(Protection::Keychain)
+    }
+    fn set_protection<'a>(&'a self, _: Option<&'a str>) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn standing(&self) -> Call<'_, Standing> {
+        ready(Ok(self.standing.borrow().clone()))
+    }
+    fn register<'a>(&'a self, _: &'a str, _: &'a str, _: Option<u32>) -> Call<'a, Standing> {
+        ready(Err(Problem::Taken(crate::backend::codes::UNCLASSIFIED)))
+    }
+    fn sign_in<'a>(&'a self, _: &'a str, _: &'a str) -> Call<'a, Standing> {
+        ready(Ok(self.standing.borrow().clone()))
+    }
+    fn sign_out(&self) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn rules(&self) -> Call<'_, Option<ServerRules>> {
+        ready(Ok(Some(ServerRules {
+            markdown: "# Be kind\n\nNo <b>spam</b>.".into(),
+            version: 2,
+            must_accept: true,
+        })))
+    }
+    fn accept_rules(&self, _: u32) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn create_persona<'a>(&'a self, _: &'a str, _: &'a str) -> Call<'a, Persona> {
+        ready(Err(Problem::Taken(crate::backend::codes::UNCLASSIFIED)))
+    }
+    fn update_persona<'a>(&'a self, _: Uuid, _: &'a str, _: &'a str) -> Call<'a, Persona> {
+        ready(Err(Problem::refused(
+            crate::backend::codes::UNCLASSIFIED,
+            "no",
+        )))
+    }
+    fn delete_persona(&self, _: Uuid) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn prepare<'a>(&'a self, _: Uuid, progress: &'a dyn Fn(Step)) -> Call<'a, ()> {
+        progress(Step::IdentityKey);
+        ready(Ok(()))
+    }
+    fn start_over<'a>(&'a self, _: Uuid, progress: &'a dyn Fn(Step)) -> Call<'a, ()> {
+        progress(Step::IdentityKey);
+        ready(Ok(()))
+    }
+    fn device_name(&self) -> Option<String> {
+        None
+    }
+    fn removed_here(&self) -> bool {
+        false
+    }
+    fn suggested_device_name(&self) -> String {
+        "This computer".into()
+    }
+    fn rename_device<'a>(&'a self, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn devices(&self) -> Call<'_, Vec<crate::backend::Device>> {
+        ready(Ok(Vec::new()))
+    }
+    fn remove_device(&self, _: Uuid, _: crate::backend::RemoveReason) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn start_link<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::LinkStart> {
+        ready(Err(Problem::Gone))
+    }
+    fn link_answer(&self) -> Call<'_, Option<Vec<String>>> {
+        ready(Err(Problem::Gone))
+    }
+    fn finish_link(&self) -> Call<'_, Standing> {
+        ready(Err(Problem::Gone))
+    }
+    fn abandon_link(&self) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn approve_link<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::Approval> {
+        ready(Ok(crate::backend::Approval::NoneWaiting))
+    }
+    fn waiting_links(&self) -> Call<'_, usize> {
+        ready(Ok(0))
+    }
+    fn key_details(&self) -> Call<'_, Vec<crate::backend::PersonaKeys>> {
+        ready(Ok(Vec::new()))
+    }
+    fn account(&self) -> Call<'_, AccountSettings> {
+        ready(Ok(AccountSettings {
+            maturity_max: Maturity::Teen,
+            is_admin: false,
+            unread_notices: 0,
+            staff_name: None,
+            suggest_all_personas: false,
+        }))
+    }
+    fn prompts(&self, _: PromptQuery) -> Call<'_, PromptPage> {
+        ready(Ok(PromptPage {
+            items: Vec::new(),
+            next_cursor: None,
+        }))
+    }
+    fn prompt(&self, _: Uuid) -> Call<'_, Prompt> {
+        ready(Err(Problem::Gone))
+    }
+    fn create_prompt(&self, _: CreatePrompt) -> Call<'_, Prompt> {
+        ready(Err(Problem::refused(
+            crate::backend::codes::UNCLASSIFIED,
+            "no",
+        )))
+    }
+    fn update_prompt(&self, _: Uuid, _: UpdatePrompt) -> Call<'_, Prompt> {
+        ready(Err(Problem::refused(
+            crate::backend::codes::UNCLASSIFIED,
+            "no",
+        )))
+    }
+    fn delete_prompt(&self, _: Uuid) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn prompt_link(&self, id: Uuid) -> Option<String> {
+        Some(format!("https://writers.example/p/{id}"))
+    }
+    fn tag_types(&self) -> Call<'_, Vec<TagNamespace>> {
+        ready(Ok(Vec::new()))
+    }
+    fn tag_policy(&self) -> Call<'_, TagPolicy> {
+        ready(Ok(TagPolicy::Open))
+    }
+    fn tag_page<'a>(&'a self, _: &'a str, _: TagPageQuery) -> Call<'a, TagPage> {
+        ready(Ok(TagPage {
+            items: Vec::new(),
+            total: 0,
+        }))
+    }
+    fn find_tags(&self, _: TagQuery) -> Call<'_, Vec<Tag>> {
+        ready(Ok(Vec::new()))
+    }
+    fn frequent_tags(&self, _: Option<Uuid>) -> Call<'_, Vec<Tag>> {
+        ready(Ok(Vec::new()))
+    }
+    fn report(&self, _: CreateReport) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn notices(&self, _: Option<i64>) -> Call<'_, Vec<AccountNotice>> {
+        ready(Ok(Vec::new()))
+    }
+    fn mark_notices_read(&self) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn send_request<'a>(
+        &'a self,
+        _: Uuid,
+        _: Uuid,
+        _: &'a str,
+        _: u32,
+    ) -> Call<'a, crate::backend::SentRequest> {
+        ready(Err(Problem::Failed {
+            code: crate::backend::codes::UNCLASSIFIED,
+            detail: "not in the fake".into(),
+        }))
+    }
+    fn sent_requests(&self) -> Call<'_, Vec<crate::backend::SentRequest>> {
+        ready(Ok(Vec::new()))
+    }
+    fn withdraw_request(&self, _: Uuid) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn waiting_requests(&self) -> Call<'_, Vec<crate::backend::WaitingPrompt>> {
+        ready(Ok(Vec::new()))
+    }
+    fn inbox(&self, _: Uuid, _: bool) -> Call<'_, crate::backend::Inbox> {
+        ready(Ok(crate::backend::Inbox::default()))
+    }
+    fn accept_request(&self, _: Uuid) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn decline_request(&self, _: Uuid) -> Call<'_, ()> {
+        ready(Ok(()))
+    }
+    fn key_change<'a>(
+        &'a self,
+        _: &'a str,
+        _: Uuid,
+    ) -> Call<'a, Option<crate::backend::KeyChange>> {
+        ready(Ok(None))
+    }
+    fn identity_words<'a>(&'a self, _: &'a str, _: Uuid) -> Call<'a, Option<Vec<String>>> {
+        ready(Ok(None))
+    }
+    fn accept_key_change<'a>(&'a self, _: &'a str, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn answers_seen(&self) -> Vec<Uuid> {
+        Vec::new()
+    }
+    fn set_answers_seen(&self, _: &[Uuid]) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn sessions(&self) -> Call<'_, Vec<crate::backend::SessionSummary>> {
+        ready(Ok(Vec::new()))
+    }
+    fn session<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::SessionView> {
+        ready(Err(Problem::Gone))
+    }
+    fn mark_shown<'a>(&'a self, _: &'a str, _: &'a str, _: u64) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn mark_opened(&self, _: &str) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn draft(&self, _: &str, _: &str) -> Result<crate::backend::Draft, Problem> {
+        Ok(crate::backend::Draft::default())
+    }
+    fn drafted(&self, _: &str) -> Result<Vec<String>, Problem> {
+        Ok(Vec::new())
+    }
+    fn waiting(&self, _: &str) -> Result<Vec<crate::backend::QueuedNote>, Problem> {
+        Ok(Vec::new())
+    }
+    fn save_draft(&self, _: &str, _: &str, _: &crate::backend::Draft) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn send_note<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a str,
+        _: &'a str,
+        _: Option<u64>,
+    ) -> Call<'a, crate::backend::Sending> {
+        Box::pin(async { Ok(crate::backend::Sending::Sent) })
+    }
+    fn send_waiting<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::Sending> {
+        Box::pin(async { Ok(crate::backend::Sending::Sent) })
+    }
+    fn change_waiting(&self, _: &str, _: Uuid, _: &str) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn withdraw_waiting(&self, _: &str, _: Uuid) -> Result<(), Problem> {
+        Ok(())
+    }
+    fn note_versions<'a>(
+        &'a self,
+        _: &'a str,
+        _: u64,
+    ) -> Call<'a, Vec<crate::backend::NoteVersion>> {
+        ready(Ok(Vec::new()))
+    }
+    fn edit_note<'a>(&'a self, _: &'a str, _: u64, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn delete_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn restore_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn name_channel<'a>(&'a self, _: &'a str, _: &'a str, _: Option<&'a str>) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn leave_session<'a>(&'a self, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn safety_numbers<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        ready(Err(Problem::Gone))
+    }
+    fn confirm_verified<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::SafetyNumbers> {
+        ready(Err(Problem::Gone))
+    }
+    fn upkeep(&self) -> Call<'_, Option<Problem>> {
+        ready(Ok(None))
+    }
+    fn next_notice(&self) -> Call<'_, ()> {
+        Box::pin(std::future::pending())
+    }
+    fn board_settings(&self) -> Call<'_, BoardSettings> {
+        ready(Ok(BoardSettings {
+            maturity_max: Maturity::Teen,
+        }))
+    }
+    fn set_board_settings(&self, s: BoardSettings) -> Call<'_, BoardSettings> {
+        ready(Ok(s))
+    }
+    fn app_settings(&self) -> AppSettings {
+        self.settings.borrow().clone()
+    }
+    fn set_app_settings(&self, s: AppSettings) -> Result<(), Problem> {
+        *self.settings.borrow_mut() = s;
+        Ok(())
+    }
+    fn move_stores<'a>(&'a self, _: &'a str) -> Call<'a, ()> {
+        ready(Ok(()))
+    }
+    fn details(&self) -> Call<'_, Details> {
+        ready(Ok(Details {
+            rows: vec![("Store".into(), "/tmp/store.quill".into())],
+        }))
+    }
+    fn sleep(&self, _: u64) -> Pin<Box<dyn Future<Output = ()> + '_>> {
+        Box::pin(std::future::pending())
+    }
+}

@@ -1,0 +1,41 @@
+[package]
+name = "plait-e2e"
+description = "End-to-end tests: real server, real Postgres, driven through plait-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+plait-core.workspace = true
+plait-proto.workspace = true
+plait-server.workspace = true
+# For `plait-seed-sessions`, which makes app windows' stores (#100).
+plait-gui.workspace = true
+plait-ui.workspace = true
+
+anyhow.workspace = true
+clap.workspace = true
+axum.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+plait-core = { workspace = true, features = ["test-tools"] }
+ed25519-dalek.workspace = true
+plait-certs = { workspace = true, features = ["sign"] }
+reqwest = { workspace = true, features = ["rustls"] }
+url.workspace = true
+serde_json.workspace = true
+tracing-subscriber.workspace = true
+# The desktop app driven by its test driver, without its window.
+plait-ui = { workspace = true, features = ["testing"] }
+tempfile = "3"
+# Checks the server's answers against the OpenAPI file.
+boon = "0.6"
+
+[lints]
+workspace = true

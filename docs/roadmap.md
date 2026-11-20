@@ -18,7 +18,7 @@ personas, CLI skeleton, the server dependency ban.
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | 1a | Prompts, tags, search, reports, admin inbox: API and CLI | done (#1) |
-| 1b | Server-rendered board (`quill-board-ui`), sessions, CSRF | done (#2) |
+| 1b | Server-rendered board (`plait-board-ui`), sessions, CSRF | done (#2) |
 | 1c | Docker setup and demo data | done |
 | 1d | Admin settings: tag management and required tag types | done |
 | 1e | Tag moderation: new-tag switch, hidden tags, tag requests | done |
@@ -47,7 +47,7 @@ architecture document, "Automated moderation"; reference for admins:
 - A demo-data seeder, run by `docker compose --profile demo run --build --rm seed`:
   at least 4 accounts, 1 to 3 personas each, 100+ prompts spread across tags,
   maturity ratings, states and dates, plus a few reports and one admin.
-- The seeder (`quill-seed`, in `quill-devtools`) is a separate development
+- The seeder (`plait-seed`, in `plait-devtools`) is a separate development
   binary with its own image, never part of the server image. It only fills a
   database with no accounts; to start over, delete the database volume
   (`docker compose down -v`). There is deliberately no reset option.
@@ -180,7 +180,7 @@ back correctly from tag to type to none.
     always reserved as a word.
   - Checks look candidates up in an indexed table, so long lists stay fast.
     Existing personas aren't affected.
-  Only `quill-server grant-handle <login> <handle>` can create a persona
+  Only `plait-server grant-handle <login> <handle>` can create a persona
   with a reserved handle.
 - **Retired handles.** Deleting a persona retires its handle for good, for
   everyone including its old owner and administrators, because other servers
@@ -254,7 +254,7 @@ before device linking, which needs it.
 
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
-| 2a | Encrypted local store in `quill-core`; the CLI's login moves into it | done (#9) |
+| 2a | Encrypted local store in `plait-core`; the CLI's login moves into it | done (#9) |
 | 2b | Identity keys per persona, device keys and certificates; the server's device directory | done (#10) |
 | 2c | OpenMLS on the client; KeyPackage upload and claim; certificate checks on claimed packages | done (#11) |
 | 2d | Device linking and the personal device group, on the group message log and epoch sequencer | done (#12) |
@@ -273,7 +273,7 @@ before device linking, which needs it.
 Everything a client keeps on disk lives in one encrypted file; later
 sub-phases add their tables (keys, trust pins, MLS state, history).
 
-- **Interface first.** `quill-core`'s `Store` has typed methods, built on a
+- **Interface first.** `plait-core`'s `Store` has typed methods, built on a
   small storage interface: named tables of byte keys and values, point
   reads, prefix scans and atomic batches. Nothing else touches the file.
   Every backend must pass one shared conformance test, so the backend can be
@@ -323,7 +323,7 @@ encrypts yet: 2c uses these keys for MLS.
   - a **device key** per persona on each device (one device per persona
     until linking arrives in 2d). It becomes the MLS signature key in 2c.
   - Private halves live only in the encrypted store.
-- **Formats** (new crate `quill-certs`, linked by both client and server):
+- **Formats** (new crate `plait-certs`, linked by both client and server):
   `DeviceCertificate` and `DeviceRevocation` exactly as in the protocol
   draft, TLS-encoded, signed with MLS's `SignWithLabel` (labels
   `"MLS 1.0 wr device cert v1"` and `"MLS 1.0 wr device revoke v1"`).
@@ -391,7 +391,7 @@ persona and check it. Groups themselves come in 2f.
   - `quill keys publish --as HANDLE [--count N]` tops it up.
   - `quill keys status --as HANDLE` shows what's left.
   - The server holds at most 100 one-time packages per device.
-- **Server checks** (structure only, no MLS library): `quill-mls-envelope`
+- **Server checks** (structure only, no MLS library): `plait-mls-envelope`
   parses a KeyPackage just far enough to check that it's MLS 1.0, our
   ciphersuite, a basic credential naming this persona's actor URI, signed
   by this registered, unrevoked, currently certified device key, carries a
@@ -423,7 +423,7 @@ full devices are linked; limited devices wait for the web client.
 
 - **Group message log (any MLS group).** The server keeps an ordered log
   per group and reads only the clear header of each `PrivateMessage`
-  (`quill-mls-envelope`: group id, epoch, content type). The first commit
+  (`plait-mls-envelope`: group id, epoch, content type). The first commit
   for the current epoch wins and advances it; a late commit, or a message
   for an old epoch, gets `409` and the client catches up and retries.
   Groups use ciphertext only (no `PublicMessage`), so commits are as opaque
@@ -993,7 +993,7 @@ CI against the code, so it can't drift.
 
 - **OpenAPI file** (`docs/openapi.json`), generated from the code with
   `utoipa`.
-  - `quill-proto`'s types derive their schemas behind an `openapi` feature
+  - `plait-proto`'s types derive their schemas behind an `openapi` feature
     that only the server turns on; clients don't link `utoipa`.
   - The server's API routers move to `utoipa-axum`, which registers each
     route together with its documentation, so a route can't be added
@@ -1066,8 +1066,8 @@ about 200 JSON bodies; it found the string enums made by a macro
 documented with Rust's variant names, which now write their schemas out.
 A message exactly at the size limit passes the size check (and is refused
 as malformed), one byte more gets 413. Vector files: `linking`, `backup`,
-`attachment`, `ordering-clock` and `json-objects` from `quill-core`;
-`names` and `limits` from `quill-proto`; `test-vectors/README.md` lists
+`attachment`, `ordering-clock` and `json-objects` from `plait-core`;
+`names` and `limits` from `plait-proto`; `test-vectors/README.md` lists
 them all. Schemas are checked with `boon`, a test-only dependency.
 
 Reordered on 2026-10-23 (see Decisions): the desktop GUI and the web
@@ -1079,10 +1079,10 @@ unchanged in content.
 
 Epic: [#36](https://github.com/thecsapprentice/quill/issues/36). Each step is a sub-issue of it, with its scope and "done when"; this table stays the summary.
 
-`quill-gui`, on Dioxus desktop ([plan](plan.md#future-clients-gui-framework-options)):
-the app logic, `quill-core` included, runs as native Rust and only DOM
+`plait-gui`, on Dioxus desktop ([plan](plan.md#future-clients-gui-framework-options)):
+the app logic, `plait-core` included, runs as native Rust and only DOM
 updates reach the webview, so keys never enter webview JavaScript. Views
-live in a shared `quill-ui` crate the web client reuses. A first cut;
+live in a shared `plait-ui` crate the web client reuses. A first cut;
 each sub-phase gets its detailed section when it's next.
 
 Design principles (requested 2026-10-23), which every Phase 3 sub-phase
@@ -1132,7 +1132,7 @@ part of its "done when".
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | 3a | Spike: the session view (channels, the long-form editor with Markdown live preview, an image attachment) in Dioxus on desktop and in the browser, at narrow and wide window sizes; IME, spellcheck and screen readers; confirm Dioxus or fall back to Leptos + Tauri 2 | done (#23) |
-| 3b | [#25](https://github.com/thecsapprentice/quill/issues/25) `quill-ui` and the `quill-gui` shell: first run (sign up or in, a persona, keys made and published without being asked), unlocking the store, personas, settings, advanced mode, the server rules | done (#63) |
+| 3b | [#25](https://github.com/thecsapprentice/quill/issues/25) `plait-ui` and the `plait-gui` shell: first run (sign up or in, a persona, keys made and published without being asked), unlocking the store, personas, settings, advanced mode, the server rules | done (#63) |
 | 3c | [#26](https://github.com/thecsapprentice/quill/issues/26) The board in the GUI: browse, search, post and edit prompts, through the board's shared components | done (#67) |
 | 3d | [#27](https://github.com/thecsapprentice/quill/issues/27) Keys and devices: identity keys, linking by QR code or words, the device list, revoking, safety numbers | done (#68, #78) |
 | 3e | [#28](https://github.com/thecsapprentice/quill/issues/28) Requests: sending with a pitch, the inbox, accepting and declining, status, the changed-key stop, and comparing words before a session ([#72](https://github.com/thecsapprentice/quill/issues/72)) | done (#73, #78) |
@@ -1148,7 +1148,7 @@ built so far up to it is [#70](https://github.com/thecsapprentice/quill/issues/7
 screens from 3e on are built to it from the start.
 
 Gate: the GUI does everything the CLI does, and the end-to-end tests that
-drive `quill-core` pass unchanged. A new user can go from installing to
+drive `plait-core` pass unchanged. A new user can go from installing to
 writing in a session without seeing an id or a key, and without leaving
 the app.
 
@@ -1242,7 +1242,7 @@ As built (`docs/plan.md`, "Text input in the webview", has the details):
 ## Phase 4: Web client
 
 `quill-web`: Rust compiled to WebAssembly, on its own origin, sharing
-`quill-core` and `quill-ui` with the desktop GUI. It must adopt every
+`plait-core` and `plait-ui` with the desktop GUI. It must adopt every
 mitigation in the plan's
 [web client security requirements](plan.md#web-client-security-requirements-for-the-separate-proposal).
 A first cut.
@@ -1250,7 +1250,7 @@ A first cut.
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | 4a | The web client proposal: how each security requirement is met, the threat model's web-specific risks, and what the server serves | planned |
-| 4b | `quill-core` on WebAssembly: the store over IndexedDB wrapped by a non-extractable WebCrypto key, HTTP through `fetch`, the RustCrypto provider, the browser's randomness; the test vectors run on WebAssembly in CI (deferred from 2m) | planned |
+| 4b | `plait-core` on WebAssembly: the store over IndexedDB wrapped by a non-extractable WebCrypto key, HTTP through `fetch`, the RustCrypto provider, the browser's randomness; the test vectors run on WebAssembly in CI (deferred from 2m) | planned |
 | 4c | `quill-web` on its own origin: the shared views, strict CSP with Trusted Types, decrypted content in a sandboxed frame | planned |
 | 4d | Web devices: linking as a limited device by default, onboarding to a backup or a second device, persistent storage, warnings about clearing site data | planned |
 | 4e | Verifiable code: reproducible builds, a signed release manifest, Subresource Integrity, a pinned version through a service worker, loading the bundle from any origin | planned |

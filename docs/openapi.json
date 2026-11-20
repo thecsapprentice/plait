@@ -12171,7 +12171,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "The error code (`quill_proto::codes`, `docs/error-codes.md`): `3009`\nis shown as `Q-3009`. Absent from servers older than #76.",
+            "description": "The error code (`plait_proto::codes`, `docs/error-codes.md`): `3009`\nis shown as `Q-3009`. Absent from servers older than #76.",
             "minimum": 0
           },
           "detail": {

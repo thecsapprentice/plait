@@ -6,11 +6,11 @@ For trying the GUI by hand. Each run:
   1. Throws away the previous dev server's database and starts a new one,
      with the server, in Docker (its own Compose project, so the database of
      a plain `docker compose up` is left alone).
-  2. Fills it with demo data (`quill-seed`): an `admin` account and a few
+  2. Fills it with demo data (`plait-seed`): an `admin` account and a few
      writers, all sharing one password, with personas and prompts.
   3. Optionally sets server rules, and when accounts must accept them.
   4. Acts out requests and sessions among the demo writers
-     (`quill-seed-sessions`) and signs each GUI window in as one of them,
+     (`plait-seed-sessions`) and signs each GUI window in as one of them,
      so the Requests and Sessions screens are full. --no-sessions skips
      this, and the GUI opens on first run instead.
   5. Starts the GUI, built while the server starts. With --guis 2 (or
@@ -47,9 +47,9 @@ from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parent.parent
 # A Compose project of its own: its own database volume and containers.
-PROJECT = "quill-gui-dev"
+PROJECT = "plait-gui-dev"
 DEFAULT_PORT = 8090
-# quill-seed's defaults (crates/quill-devtools/src/main.rs).
+# plait-seed's defaults (crates/plait-devtools/src/main.rs).
 ADMIN = "admin"
 DEMO_PASSWORD = "quill demo password"
 SAMPLE_RULES = """# Be kind
@@ -96,7 +96,7 @@ def compose(args: argparse.Namespace, *rest: str, check: bool = True) -> int:
 
 
 def seed_board(args: argparse.Namespace) -> list[str]:
-    """Runs quill-seed and returns its `QUILL_CAST` lines (the demo logins
+    """Runs plait-seed and returns its `QUILL_CAST` lines (the demo logins
     and personas), showing the rest of what it prints."""
     cmd = ["docker", "compose", "-p", PROJECT, "-f", str(ROOT / "compose.yaml"),
            "--profile", "demo", "run", "--build", "--rm", "seed",
@@ -117,10 +117,10 @@ def seed_board(args: argparse.Namespace) -> list[str]:
 
 def seed_sessions(args: argparse.Namespace, cast: list[str], dirs: list[Path]) -> None:
     """Acts out requests and sessions, signing each window's folder in as
-    a demo writer (crates/quill-e2e/src/bin/quill-seed-sessions.rs)."""
+    a demo writer (crates/plait-e2e/src/bin/plait-seed-sessions.rs)."""
     cast_file = target_dir() / "dev-gui" / "cast.txt"
     cast_file.write_text("\n".join(cast) + "\n", encoding="utf-8")
-    cmd = [str(tool_binary("quill-seed-sessions", args.release)),
+    cmd = [str(tool_binary("plait-seed-sessions", args.release)),
            "--server", f"localhost:{args.port}", "--password", args.password,
            "--cast", str(cast_file)]
     for d in dirs:
@@ -178,13 +178,13 @@ def tool_binary(name: str, release: bool) -> Path:
 
 
 def gui_binary(release: bool) -> Path:
-    return tool_binary("quill-gui", release)
+    return tool_binary("plait-gui", release)
 
 
 def start_gui_build(args: argparse.Namespace, log: Path) -> subprocess.Popen:
     # The GUI, and the tool that fills its windows with requests and sessions.
-    cmd = ["cargo", "build", "-p", "quill-gui", "-p", "quill-e2e",
-           "--bin", "quill-gui", "--bin", "quill-seed-sessions"]
+    cmd = ["cargo", "build", "-p", "plait-gui", "-p", "plait-e2e",
+           "--bin", "plait-gui", "--bin", "plait-seed-sessions"]
     cmd += ["--release"] if args.release else []
     log.parent.mkdir(parents=True, exist_ok=True)
     out = open(log, "w", encoding="utf-8")

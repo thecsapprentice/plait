@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Crates the server binary links.
-SERVER_CRATES=(quill-server quill-proto quill-mls-envelope quill-board-ui quill-certs)
+SERVER_CRATES=(plait-server plait-proto plait-mls-envelope plait-board-ui plait-certs)
 
 # Banned crate names (exact match, or prefix when ending in '*').
 BANNED=(
@@ -19,10 +19,10 @@ BANNED=(
   'libcrux*'        # crypto backend of openmls_libcrux_crypto
   'x25519-dalek'    # key agreement: only clients do this
   'age'             # backup encryption: only clients do this
-  'quill-core'      # client library: holds all session keys
+  'plait-core'      # client library: holds all session keys
   'quill'           # CLI client
-  'quill-ui'        # the writing client's views (sessions are decrypted there)
-  'quill-gui'       # desktop client
+  'plait-ui'        # the writing client's views (sessions are decrypted there)
+  'plait-gui'       # desktop client
 )
 
 status=0

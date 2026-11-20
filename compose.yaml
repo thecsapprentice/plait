@@ -1,7 +1,7 @@
 # Local development and testing only: a Quill server and its database.
 #
 #   docker compose up --build -d                         # start; board at http://localhost:8080/
-#   docker compose exec server quill-server make-admin NAME
+#   docker compose exec server plait-server make-admin NAME
 #   docker compose --profile demo run --build --rm seed  # fill an empty database with demo data
 #   docker compose logs -f server
 #   docker compose down                                  # stop (add -v to delete the database)
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       target: server
-    image: quill-server:dev
+    image: plait-server:dev
     depends_on:
       db:
         condition: service_healthy
@@ -59,7 +59,7 @@ services:
     build:
       context: .
       target: seed
-    image: quill-seed:dev
+    image: plait-seed:dev
     depends_on:
       db:
         condition: service_healthy

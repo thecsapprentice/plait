@@ -1,0 +1,1304 @@
+//! Board page handlers. Each GET renders a page; each POST validates the
+//! form, calls the shared service functions, and redirects (or re-renders the
+//! form with an error).
+
+use std::str::FromStr;
+
+use axum::{
+    Form,
+    body::Bytes,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Redirect, Response},
+};
+use plait_board_ui::{
+    AdminLogEntryView, AdminLogView, AdminReportsView, AuthMode, AuthView, BoardFilters, BoardView,
+    Nav, PersonasView, PromptFormView, PromptView, ReportView, SettingsView,
+};
+use plait_proto::{
+    api::{CreatePersona, Credentials, Registration},
+    board::{
+        CreatePrompt, CreateReport, Maturity, PromptQuery, PromptState, ReportReason, Resolution,
+        TagQuery, UpdateAccountSettings, UpdatePrompt,
+    },
+    codes,
+    limits::{FREQUENT_TAGS, MAX_PAGE_SIZE},
+    validate,
+};
+use serde::Deserialize;
+use uuid::Uuid;
+
+use super::{
+    chrome, csrf_failed, error_page, html, message,
+    picker::{self, PromptPost},
+    redirect,
+    session::{self, MaybeSession, Session},
+};
+use crate::{AppState, error::ApiError, prompts, reports, routes};
+
+// ---- Small helpers -------------------------------------------------------
+
+/// A trimmed, non-empty form value.
+pub(super) fn opt(value: &Option<String>) -> Option<&str> {
+    value.as_deref().map(str::trim).filter(|v| !v.is_empty())
+}
+
+fn parse_opt<T: FromStr>(value: &Option<String>) -> Option<T> {
+    opt(value).and_then(|v| v.parse().ok())
+}
+
+/// Errors the visitor can fix by changing the form.
+pub(super) fn form_error(err: &ApiError) -> Option<String> {
+    match err {
+        ApiError::BadRequest(_, m)
+        | ApiError::Conflict(_, m)
+        | ApiError::Forbidden(_, m)
+        | ApiError::ContentRejected(_, m)
+        | ApiError::RulesNotAccepted(_, m) => Some(m.clone()),
+        _ => None,
+    }
+}
+
+async fn owns_actor(state: &AppState, actor: Uuid, account: Uuid) -> Result<bool, ApiError> {
+    Ok(
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM actors WHERE id = $1 AND account_id = $2)",
+        )
+        .bind(actor)
+        .bind(account)
+        .fetch_one(&state.pool)
+        .await?,
+    )
+}
+
+async fn tag_options(state: &AppState) -> Vec<plait_proto::board::Tag> {
+    prompts::search_tags(
+        state,
+        &TagQuery {
+            limit: Some(MAX_PAGE_SIZE),
+            ..TagQuery::default()
+        },
+    )
+    .await
+    .unwrap_or_default()
+}
+
+fn with_cookie(cookie: axum::http::HeaderValue, to: &str) -> Response {
+    ([(header::SET_COOKIE, cookie)], Redirect::to(to)).into_response()
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct NoticeQuery {
+    notice: Option<String>,
+}
+
+/// A form that only carries the CSRF token (and maybe a confirmation box).
+#[derive(Debug, Default, Deserialize)]
+pub struct ConfirmForm {
+    csrf: Option<String>,
+    confirm: Option<String>,
+}
+
+// ---- The board -----------------------------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+pub struct BoardParams {
+    include: Option<String>,
+    exclude: Option<String>,
+    q: Option<String>,
+    maturity: Option<String>,
+    state: Option<String>,
+    cursor: Option<String>,
+    /// A prompt to show in the reading pane beside the list.
+    open: Option<String>,
+    notice: Option<String>,
+}
+
+pub async fn board(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    headers: HeaderMap,
+    Query(p): Query<BoardParams>,
+) -> Response {
+    let c = chrome(&state, session.as_ref(), Nav::Board, opt(&p.notice));
+    let filters = BoardFilters {
+        include: opt(&p.include).unwrap_or_default().to_owned(),
+        exclude: opt(&p.exclude).unwrap_or_default().to_owned(),
+        q: opt(&p.q).unwrap_or_default().to_owned(),
+        maturity: parse_opt::<Maturity>(&p.maturity),
+        state: parse_opt::<PromptState>(&p.state),
+    };
+    let query = PromptQuery {
+        include: opt(&p.include).map(str::to_owned),
+        exclude: opt(&p.exclude).map(str::to_owned),
+        maturity_max: filters.maturity,
+        q: opt(&p.q).map(str::to_owned),
+        author: None,
+        state: filters.state,
+        cursor: opt(&p.cursor).map(str::to_owned),
+        limit: None,
+    };
+    let viewer = session.as_ref().map(|s| s.account_id);
+    let (items, next_cursor, error) = match prompts::search_prompts(&state, viewer, &query).await {
+        Ok(page) => (page.items, page.next_cursor, None),
+        Err(ApiError::BadRequest(_, m)) => (Vec::new(), None, Some(m)),
+        Err(e) => return error_page(&c, e),
+    };
+    let (sticky_announcements, announcement) =
+        match super::announcements::banners(&state, &headers).await {
+            Ok(b) => b,
+            Err(e) => return error_page(&c, e),
+        };
+    let cap = session
+        .as_ref()
+        .map_or(Maturity::DEFAULT_MAX, |s| s.maturity_max);
+    // A prompt rated above the visitor's cap isn't opened here; its own
+    // page asks first.
+    let open = match parse_opt::<Uuid>(&p.open) {
+        Some(id) => match prompts::load_prompt(&state.pool, id, viewer, false).await {
+            Ok(found) => found.filter(|p| p.maturity <= cap),
+            Err(e) => return error_page(&c, e),
+        },
+        None => None,
+    };
+    let view = BoardView {
+        filters,
+        prompts: items,
+        cursor: opt(&p.cursor).map(str::to_owned),
+        next_cursor,
+        open,
+        cap,
+        namespaces: prompts::namespaces(&state).await.unwrap_or_default(),
+        tag_options: tag_options(&state).await,
+        error,
+        sticky_announcements,
+        announcement,
+    };
+    html(StatusCode::OK, plait_board_ui::board_page(&c, view))
+}
+
+// ---- One prompt ----------------------------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+pub struct PromptParams {
+    show: Option<String>,
+    notice: Option<String>,
+}
+
+pub async fn prompt(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    Query(p): Query<PromptParams>,
+) -> Response {
+    let c = chrome(&state, session.as_ref(), Nav::Other, opt(&p.notice));
+    let Ok(id) = id.parse::<Uuid>() else {
+        return error_page(&c, ApiError::NotFound);
+    };
+    let viewer = session.as_ref().map(|s| s.account_id);
+    let prompt = match prompts::load_prompt(&state.pool, id, viewer, false).await {
+        Ok(Some(p)) => p,
+        Ok(None) => return error_page(&c, ApiError::NotFound),
+        Err(e) => return error_page(&c, e),
+    };
+    let is_author = match viewer {
+        Some(account) => match owns_actor(&state, prompt.author.id, account).await {
+            Ok(v) => v,
+            Err(e) => return error_page(&c, e),
+        },
+        None => false,
+    };
+    let cap = session
+        .as_ref()
+        .map_or(Maturity::DEFAULT_MAX, |s| s.maturity_max);
+    let held_back = (!is_author && p.show.is_none() && prompt.maturity > cap).then_some(cap);
+    html(
+        StatusCode::OK,
+        plait_board_ui::prompt_page(
+            &c,
+            PromptView {
+                prompt,
+                is_author,
+                held_back,
+            },
+        ),
+    )
+}
+
+// ---- Posting and editing -------------------------------------------------
+
+/// What the prompt form shows besides the prompt's own fields.
+struct FormTags {
+    chips: Vec<plait_board_ui::TagChip>,
+    add_text: String,
+    errors: Vec<String>,
+}
+
+async fn prompt_form_view(
+    state: &AppState,
+    session: &Session,
+    editing: Option<Uuid>,
+    post: &PromptPost,
+    tags: FormTags,
+    error: Option<String>,
+) -> Result<PromptFormView, ApiError> {
+    let personas = routes::personas(state, session.account_id).await?;
+    // Suggestions are for the persona posting: the one chosen, else the
+    // first in the list, which the form selects.
+    let persona = parse_opt::<Uuid>(&post.persona)
+        .filter(|id| personas.iter().any(|p| p.id == *id))
+        .or_else(|| personas.first().map(|p| p.id));
+    let chosen: Vec<String> = tags.chips.iter().map(|c| c.tag.key()).collect();
+    let frequent: Vec<_> = match persona {
+        Some(id) => prompts::frequent_tags(
+            state,
+            session.account_id,
+            Some(id),
+            FREQUENT_TAGS + chosen.len(),
+        )
+        .await?
+        .into_iter()
+        .filter(|t| !chosen.contains(&t.key()))
+        .take(FREQUENT_TAGS)
+        .collect(),
+        None => Vec::new(),
+    };
+    let all = prompts::account_settings(state, session.account_id)
+        .await?
+        .suggest_all_personas;
+    let frequent_for = persona
+        .filter(|_| !all)
+        .and_then(|id| personas.iter().find(|p| p.id == id))
+        .map(|p| p.handle.clone());
+    Ok(PromptFormView {
+        editing,
+        personas,
+        persona: parse_opt(&post.persona),
+        frequent,
+        frequent_for,
+        title: post.title.clone().unwrap_or_default(),
+        body: post.body.clone().unwrap_or_default(),
+        maturity: parse_opt(&post.maturity).unwrap_or(Maturity::General),
+        chips: tags.chips,
+        add_text: tags.add_text,
+        tag_errors: tags.errors,
+        state: parse_opt(&post.state).unwrap_or(PromptState::Open),
+        error,
+        tag_options: tag_options(state).await,
+        tag_policy: crate::server_settings::settings(state).await?.new_tags,
+        namespaces: prompts::namespaces(state).await?,
+        preview_html: post
+            .previewing()
+            .then(|| crate::markdown::render(post.body.as_deref().unwrap_or_default())),
+    })
+}
+
+async fn render_prompt_form(
+    state: &AppState,
+    session: &Session,
+    editing: Option<Uuid>,
+    post: &PromptPost,
+    tags: FormTags,
+    error: Option<String>,
+) -> Response {
+    let nav = if editing.is_some() {
+        Nav::Other
+    } else {
+        Nav::Post
+    };
+    let c = chrome(state, Some(session), nav, None);
+    let status = if error.is_some() || !tags.errors.is_empty() {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::OK
+    };
+    match prompt_form_view(state, session, editing, post, tags, error).await {
+        Ok(view) => html(status, plait_board_ui::prompt_form_page(&c, view)),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+/// Reads the picker. Returns the form to show again unless the visitor is
+/// posting and every tag could be added; otherwise the chosen tag values.
+async fn read_picker(
+    state: &AppState,
+    session: &Session,
+    editing: Option<Uuid>,
+    post: &PromptPost,
+) -> Result<Vec<String>, Response> {
+    let picked = match picker::preview(state, &post.tag_values()).await {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(error_page(
+                &chrome(state, Some(session), Nav::Other, None),
+                e,
+            ));
+        }
+    };
+    if post.saving() && picked.errors.is_empty() {
+        return Ok(picked.chips.into_iter().map(|c| c.value).collect());
+    }
+    let tags = FormTags {
+        chips: picked.chips,
+        add_text: picked.unadded.join(", "),
+        errors: picked.errors,
+    };
+    Err(render_prompt_form(state, session, editing, post, tags, None).await)
+}
+
+pub async fn new_form(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let tags = FormTags {
+        chips: Vec::new(),
+        add_text: String::new(),
+        errors: Vec::new(),
+    };
+    render_prompt_form(&state, &s, None, &PromptPost::default(), tags, None).await
+}
+
+pub async fn new_submit(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    body: Bytes,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let post = PromptPost::parse(&body);
+    if !s.csrf_matches(post.csrf.as_deref()) {
+        return csrf_failed(&chrome(&state, Some(&s), Nav::Post, None));
+    }
+    let tag_values = match read_picker(&state, &s, None, &post).await {
+        Ok(v) => v,
+        Err(form) => return form,
+    };
+    let again = |error: String| {
+        let tag_values = tag_values.clone();
+        let (state, s, post) = (&state, &s, &post);
+        async move {
+            let chips = picker::preview(state, &tag_values)
+                .await
+                .map(|p| p.chips)
+                .unwrap_or_default();
+            let tags = FormTags {
+                chips,
+                add_text: String::new(),
+                errors: Vec::new(),
+            };
+            render_prompt_form(state, s, None, post, tags, Some(error)).await
+        }
+    };
+    let Some(persona) = parse_opt::<Uuid>(&post.persona) else {
+        return again("Choose a persona to post as.".to_owned()).await;
+    };
+    let Some(maturity) = parse_opt::<Maturity>(&post.maturity) else {
+        return again("Choose a maturity rating.".to_owned()).await;
+    };
+    let create = CreatePrompt {
+        persona,
+        title: post.title.clone().unwrap_or_default(),
+        body: post.body.clone().unwrap_or_default(),
+        maturity,
+        tags: tag_values.clone(),
+        state: parse_opt(&post.state),
+    };
+    match prompts::post_prompt(&state, s.account_id, &create).await {
+        Ok(p) => redirect(&format!("/p/{}?notice=posted", p.id)),
+        Err(e) => match form_error(&e) {
+            Some(m) => again(m).await,
+            None => error_page(&chrome(&state, Some(&s), Nav::Post, None), e),
+        },
+    }
+}
+
+/// Loads a prompt for editing by its author.
+async fn own_prompt(
+    state: &AppState,
+    s: &Session,
+    id: &str,
+) -> Result<plait_proto::board::Prompt, ApiError> {
+    let id: Uuid = id.parse().map_err(|_| ApiError::NotFound)?;
+    let p = prompts::load_prompt(&state.pool, id, Some(s.account_id), false)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if !owns_actor(state, p.author.id, s.account_id).await? {
+        return Err(ApiError::NotFound);
+    }
+    if p.removed {
+        return Err(ApiError::Forbidden(
+            codes::PROMPT_REMOVED,
+            "A server administrator removed this prompt, so it can't be changed.".into(),
+        ));
+    }
+    Ok(p)
+}
+
+pub async fn edit_form(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let p = match own_prompt(&state, &s, &id).await {
+        Ok(p) => p,
+        Err(e) => return error_page(&chrome(&state, Some(&s), Nav::Other, None), e),
+    };
+    let post = PromptPost {
+        persona: Some(p.author.id.to_string()),
+        title: Some(p.title.clone()),
+        body: Some(p.body.clone()),
+        maturity: Some(p.maturity.to_string()),
+        state: Some(p.state.to_string()),
+        ..PromptPost::default()
+    };
+    let tags = FormTags {
+        chips: picker::chips_for(&p.tags),
+        add_text: String::new(),
+        errors: Vec::new(),
+    };
+    render_prompt_form(&state, &s, Some(p.id), &post, tags, None).await
+}
+
+pub async fn edit_submit(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::Other, None);
+    let post = PromptPost::parse(&body);
+    if !s.csrf_matches(post.csrf.as_deref()) {
+        return csrf_failed(&c);
+    }
+    let p = match own_prompt(&state, &s, &id).await {
+        Ok(p) => p,
+        Err(e) => return error_page(&c, e),
+    };
+    let tag_values = match read_picker(&state, &s, Some(p.id), &post).await {
+        Ok(v) => v,
+        Err(form) => return form,
+    };
+    let update = UpdatePrompt {
+        title: post.title.clone(),
+        body: post.body.clone(),
+        maturity: parse_opt(&post.maturity),
+        tags: Some(tag_values.clone()),
+        state: parse_opt(&post.state),
+    };
+    match prompts::edit_prompt(&state, s.account_id, p.id, &update).await {
+        Ok(_) => redirect(&format!("/p/{}?notice=saved", p.id)),
+        Err(e) => match form_error(&e) {
+            Some(m) => {
+                let chips = picker::preview(&state, &tag_values)
+                    .await
+                    .map(|p| p.chips)
+                    .unwrap_or_default();
+                let tags = FormTags {
+                    chips,
+                    add_text: String::new(),
+                    errors: Vec::new(),
+                };
+                render_prompt_form(&state, &s, Some(p.id), &post, tags, Some(m)).await
+            }
+            None => error_page(&c, e),
+        },
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct StateForm {
+    csrf: Option<String>,
+    state: Option<String>,
+}
+
+pub async fn set_state(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    Form(form): Form<StateForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::Other, None);
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&c);
+    }
+    let Ok(id) = id.parse::<Uuid>() else {
+        return error_page(&c, ApiError::NotFound);
+    };
+    let Some(new_state) = parse_opt::<PromptState>(&form.state) else {
+        return error_page(
+            &c,
+            ApiError::BadRequest(codes::FORM_NO_CHOICE, "Choose a status.".into()),
+        );
+    };
+    let update = UpdatePrompt {
+        state: Some(new_state),
+        ..UpdatePrompt::default()
+    };
+    match prompts::edit_prompt(&state, s.account_id, id, &update).await {
+        Ok(_) => redirect(&format!("/p/{id}?notice=status")),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+pub async fn delete(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    Form(form): Form<ConfirmForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::Other, None);
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&c);
+    }
+    let Ok(id) = id.parse::<Uuid>() else {
+        return error_page(&c, ApiError::NotFound);
+    };
+    if form.confirm.as_deref() != Some("yes") {
+        return error_page(
+            &c,
+            ApiError::BadRequest(
+                codes::FORM_NOT_CONFIRMED,
+                "Tick the box to confirm deleting the prompt.".into(),
+            ),
+        );
+    }
+    match prompts::remove_own_prompt(&state, s.account_id, id).await {
+        Ok(()) => redirect("/mine?notice=deleted"),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+// ---- Reporting -----------------------------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ReportForm {
+    csrf: Option<String>,
+    reason: Option<String>,
+    details: Option<String>,
+}
+
+async fn reportable(
+    state: &AppState,
+    session: Option<&Session>,
+    id: &str,
+) -> Result<plait_proto::board::Prompt, ApiError> {
+    let id: Uuid = id.parse().map_err(|_| ApiError::NotFound)?;
+    let p = prompts::load_prompt(&state.pool, id, session.map(|s| s.account_id), false)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if p.removed {
+        return Err(ApiError::NotFound);
+    }
+    Ok(p)
+}
+
+pub async fn report_form(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+) -> Response {
+    let c = chrome(&state, session.as_ref(), Nav::Other, None);
+    match reportable(&state, session.as_ref(), &id).await {
+        Ok(prompt) => html(
+            StatusCode::OK,
+            plait_board_ui::report_page(
+                &c,
+                ReportView {
+                    prompt,
+                    reason: None,
+                    details: String::new(),
+                    error: None,
+                },
+            ),
+        ),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+pub async fn report_submit(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    Form(form): Form<ReportForm>,
+) -> Response {
+    let c = chrome(&state, session.as_ref(), Nav::Other, None);
+    if let Some(s) = &session
+        && !s.csrf_matches(form.csrf.as_deref())
+    {
+        return csrf_failed(&c);
+    }
+    let prompt = match reportable(&state, session.as_ref(), &id).await {
+        Ok(p) => p,
+        Err(e) => return error_page(&c, e),
+    };
+    let reason = parse_opt::<ReportReason>(&form.reason);
+    let rerender = |error: String| {
+        html(
+            StatusCode::BAD_REQUEST,
+            plait_board_ui::report_page(
+                &c,
+                ReportView {
+                    prompt: prompt.clone(),
+                    reason,
+                    details: form.details.clone().unwrap_or_default(),
+                    error: Some(error),
+                },
+            ),
+        )
+    };
+    let Some(reason) = reason else {
+        return rerender("Choose what's wrong with the prompt.".into());
+    };
+    let report = CreateReport {
+        prompt: prompt.id,
+        reason,
+        details: opt(&form.details).map(str::to_owned),
+    };
+    match reports::file_report(&state, session.as_ref().map(|s| s.account_id), &report).await {
+        Ok(()) => redirect(&format!("/p/{}?notice=reported", prompt.id)),
+        Err(ApiError::BadRequest(_, m)) => rerender(format!("Details {m}.")),
+        Err(ApiError::ContentRejected(_, m)) => rerender(m),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+// ---- The visitor's own pages ---------------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+pub struct MineParams {
+    notice: Option<String>,
+    /// Closed prompts rather than those on the board.
+    closed: Option<String>,
+    /// One persona's prompts.
+    persona: Option<String>,
+}
+
+pub async fn mine(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Query(q): Query<MineParams>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::Mine, opt(&q.notice));
+    let closed = opt(&q.closed).is_some();
+    let persona = parse_opt::<Uuid>(&q.persona);
+    let query = PromptQuery {
+        author: Some("me".into()),
+        limit: Some(MAX_PAGE_SIZE),
+        ..PromptQuery::default()
+    };
+    let loaded = async {
+        let page = prompts::search_prompts(&state, Some(s.account_id), &query).await?;
+        let personas = routes::personas(&state, s.account_id).await?;
+        Ok::<_, ApiError>((page.items, personas))
+    }
+    .await;
+    match loaded {
+        Ok((items, personas)) => {
+            let prompts = items
+                .into_iter()
+                .filter(|p| (p.state == PromptState::Closed) == closed)
+                .filter(|p| persona.is_none_or(|id| p.author.id == id))
+                .collect();
+            let view = plait_board_ui::MyPromptsView {
+                prompts,
+                personas,
+                persona,
+                closed,
+            };
+            html(StatusCode::OK, plait_board_ui::my_prompts_page(&c, view))
+        }
+        Err(e) => error_page(&c, e),
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct PersonaForm {
+    csrf: Option<String>,
+    handle: Option<String>,
+    display_name: Option<String>,
+}
+
+async fn render_personas(
+    state: &AppState,
+    s: &Session,
+    notice: Option<&str>,
+    form: &PersonaForm,
+    error: Option<String>,
+) -> Response {
+    let c = chrome(state, Some(s), Nav::Personas, notice);
+    let status = if error.is_some() {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::OK
+    };
+    match routes::personas(state, s.account_id).await {
+        Ok(personas) => html(
+            status,
+            plait_board_ui::personas_page(
+                &c,
+                PersonasView {
+                    personas,
+                    handle: form.handle.clone().unwrap_or_default(),
+                    display_name: form.display_name.clone().unwrap_or_default(),
+                    error,
+                },
+            ),
+        ),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+pub async fn personas(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Query(q): Query<NoticeQuery>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    render_personas(&state, &s, opt(&q.notice), &PersonaForm::default(), None).await
+}
+
+pub async fn persona_create(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Form(form): Form<PersonaForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&chrome(&state, Some(&s), Nav::Personas, None));
+    }
+    let handle = form.handle.clone().unwrap_or_default();
+    if validate::username(&handle).is_err() {
+        let e = "Handles are 1-30 characters: a-z, 0-9 and underscores.".to_owned();
+        return render_personas(&state, &s, None, &form, Some(e)).await;
+    }
+    let body = CreatePersona {
+        handle,
+        display_name: opt(&form.display_name).map(str::to_owned),
+        summary: None,
+    };
+    match routes::add_persona(&state, s.account_id, &body).await {
+        Ok(_) => redirect("/personas?notice=persona-created"),
+        // The server's messages say whether a handle is reserved or simply
+        // unavailable (taken and retired look the same on purpose).
+        Err(e) => match form_error(&e) {
+            Some(m) => render_personas(&state, &s, None, &form, Some(m)).await,
+            None => error_page(&chrome(&state, Some(&s), Nav::Personas, None), e),
+        },
+    }
+}
+
+pub async fn persona_delete(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    Form(form): Form<ConfirmForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::Personas, None);
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&c);
+    }
+    let Ok(id) = id.parse::<Uuid>() else {
+        return error_page(&c, ApiError::NotFound);
+    };
+    if form.confirm.as_deref() != Some("yes") {
+        return error_page(
+            &c,
+            ApiError::BadRequest(
+                codes::FORM_NOT_CONFIRMED,
+                "Tick the box to confirm deleting the persona.".into(),
+            ),
+        );
+    }
+    match routes::remove_persona(&state, s.account_id, id).await {
+        Ok(()) => redirect("/personas?notice=persona-deleted"),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+pub async fn settings(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Query(q): Query<NoticeQuery>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    render_settings(&state, &s, opt(&q.notice), None, None).await
+}
+
+/// The settings page; `staff_name` and `error` refill it after a refusal.
+async fn render_settings(
+    state: &AppState,
+    s: &Session,
+    notice: Option<&str>,
+    staff_name: Option<&str>,
+    error: Option<String>,
+) -> Response {
+    let c = chrome(state, Some(s), Nav::Settings, notice);
+    match prompts::account_settings(state, s.account_id).await {
+        Ok(settings) => {
+            let staff_name = staff_name
+                .map(str::to_owned)
+                .or_else(|| settings.staff_name.clone())
+                .unwrap_or_default();
+            let status = if error.is_some() {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::OK
+            };
+            html(
+                status,
+                plait_board_ui::settings_page(
+                    &c,
+                    SettingsView {
+                        settings,
+                        staff_name,
+                        error,
+                    },
+                ),
+            )
+        }
+        Err(e) => error_page(&c, e),
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct SettingsForm {
+    csrf: Option<String>,
+    maturity_max: Option<String>,
+    /// Sent only by administrators' forms.
+    staff_name: Option<String>,
+    /// A checkbox: the form is always sent whole, so absent means off.
+    suggest_all_personas: Option<String>,
+}
+
+pub async fn settings_save(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Form(form): Form<SettingsForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::Settings, None);
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&c);
+    }
+    let update = UpdateAccountSettings {
+        maturity_max: parse_opt(&form.maturity_max),
+        staff_name: form.staff_name.clone().filter(|_| s.is_admin),
+        suggest_all_personas: Some(form.suggest_all_personas.is_some()),
+    };
+    match prompts::update_account_settings(&state, s.account_id, &update).await {
+        Ok(_) => redirect("/settings?notice=settings"),
+        Err(e) => match form_error(&e) {
+            Some(m) => render_settings(&state, &s, None, form.staff_name.as_deref(), Some(m)).await,
+            None => error_page(&c, e),
+        },
+    }
+}
+
+// ---- More ------------------------------------------------------------------
+
+/// The phone's "More" page: links that don't fit its tab bar.
+pub async fn more(State(state): State<AppState>, MaybeSession(session): MaybeSession) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    let c = chrome(&state, Some(&s), Nav::More, None);
+    html(StatusCode::OK, plait_board_ui::more_page(&c))
+}
+
+// ---- Sign in, register, sign out -----------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+pub struct AuthForm {
+    username: Option<String>,
+    password: Option<String>,
+    confirm: Option<String>,
+    /// The "I accept the server rules" checkbox, and the version it was for.
+    accept_rules: Option<String>,
+    rules_version: Option<String>,
+}
+
+/// `accept_rules` is the rules version a sign-up form asks to accept.
+fn auth_page(
+    state: &AppState,
+    mode: AuthMode,
+    username: &str,
+    status: StatusCode,
+    error: Option<String>,
+    accept_rules: Option<u32>,
+) -> Response {
+    let c = chrome(state, None, Nav::SignIn, None);
+    html(
+        status,
+        plait_board_ui::auth_page(
+            &c,
+            AuthView {
+                mode,
+                username: username.to_owned(),
+                error,
+                registration_open: state.config.registration_open,
+                accept_rules,
+            },
+        ),
+    )
+}
+
+pub async fn login_form(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+) -> Response {
+    if session.is_some() {
+        return redirect("/");
+    }
+    auth_page(&state, AuthMode::SignIn, "", StatusCode::OK, None, None)
+}
+
+pub async fn login_submit(State(state): State<AppState>, Form(form): Form<AuthForm>) -> Response {
+    let username = form.username.clone().unwrap_or_default();
+    let creds = Credentials {
+        username: username.clone(),
+        password: form.password.clone().unwrap_or_default(),
+    };
+    match routes::check_credentials(&state, creds).await {
+        Ok(account) => match session::start(&state, account).await {
+            Ok(cookie) => with_cookie(cookie, "/?notice=signed-in"),
+            Err(e) => error_page(&chrome(&state, None, Nav::SignIn, None), e),
+        },
+        Err(ApiError::InvalidCredentials) => auth_page(
+            &state,
+            AuthMode::SignIn,
+            &username,
+            StatusCode::UNAUTHORIZED,
+            Some("That login name and password don't match an account.".into()),
+            None,
+        ),
+        Err(e) => error_page(&chrome(&state, None, Nav::SignIn, None), e),
+    }
+}
+
+pub async fn register_form(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+) -> Response {
+    if session.is_some() {
+        return redirect("/");
+    }
+    match super::rules::version_to_accept_on_join(&state).await {
+        Ok(accept) => auth_page(&state, AuthMode::Register, "", StatusCode::OK, None, accept),
+        Err(e) => error_page(&chrome(&state, None, Nav::SignIn, None), e),
+    }
+}
+
+pub async fn register_submit(
+    State(state): State<AppState>,
+    Form(form): Form<AuthForm>,
+) -> Response {
+    let username = form.username.clone().unwrap_or_default();
+    let password = form.password.clone().unwrap_or_default();
+    // Asked again with the rules as they are now, should they have changed.
+    let accept = match super::rules::version_to_accept_on_join(&state).await {
+        Ok(v) => v,
+        Err(e) => return error_page(&chrome(&state, None, Nav::SignIn, None), e),
+    };
+    let fail = |m: &str| {
+        auth_page(
+            &state,
+            AuthMode::Register,
+            &username,
+            StatusCode::BAD_REQUEST,
+            Some(m.to_owned()),
+            accept,
+        )
+    };
+    if validate::username(&username).is_err() {
+        return fail("Login names are 1-30 characters: a-z, 0-9 and underscores.");
+    }
+    if validate::password(&password).is_err() {
+        return fail("Passwords need at least 12 characters.");
+    }
+    if form.confirm.as_deref() != Some(password.as_str()) {
+        return fail("The two passwords don't match.");
+    }
+    let registration = Registration {
+        username: username.clone(),
+        password,
+        accept_rules: form
+            .accept_rules
+            .is_some()
+            .then(|| opt(&form.rules_version).and_then(|v| v.parse().ok()))
+            .flatten(),
+    };
+    match routes::create_account(&state, registration).await {
+        Ok(account) => match session::start(&state, account).await {
+            Ok(cookie) => with_cookie(cookie, "/personas?notice=registered"),
+            Err(e) => error_page(&chrome(&state, None, Nav::SignIn, None), e),
+        },
+        Err(ApiError::Conflict(..)) => fail("That login name is taken. Try another."),
+        Err(ApiError::Forbidden(..)) => fail("This server isn't accepting new accounts right now."),
+        Err(ApiError::RulesNotAccepted(_, m)) => fail(&m),
+        Err(e) => error_page(&chrome(&state, None, Nav::SignIn, None), e),
+    }
+}
+
+pub async fn logout(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Form(form): Form<ConfirmForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/");
+    };
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&chrome(&state, Some(&s), Nav::Other, None));
+    }
+    match session::end(&state, &s).await {
+        Ok(cookie) => with_cookie(cookie, "/?notice=signed-out"),
+        Err(e) => error_page(&chrome(&state, Some(&s), Nav::Other, None), e),
+    }
+}
+
+// ---- Administration ------------------------------------------------------
+
+pub(super) fn not_admin(state: &AppState, s: &Session) -> Response {
+    message(
+        &chrome(state, Some(s), Nav::Admin, None),
+        StatusCode::FORBIDDEN,
+        "Administrators only",
+        "Only this server's administrators can see this page.",
+    )
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct AdminReportsParams {
+    all: Option<String>,
+    notice: Option<String>,
+    /// The report to show in full.
+    open: Option<String>,
+}
+
+pub async fn admin_reports(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Query(p): Query<AdminReportsParams>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    if !s.is_admin {
+        return not_admin(&state, &s);
+    }
+    let c = chrome(&state, Some(&s), Nav::Admin, opt(&p.notice));
+    let all = p.all.is_some();
+    match reports::reports(&state, all).await {
+        Ok(reports) => html(
+            StatusCode::OK,
+            plait_board_ui::admin_reports_page(
+                &c,
+                AdminReportsView {
+                    reports,
+                    all,
+                    open: parse_opt(&p.open),
+                },
+            ),
+        ),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ResolveForm {
+    csrf: Option<String>,
+    action: Option<String>,
+}
+
+pub async fn admin_resolve(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<String>,
+    Form(form): Form<ResolveForm>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    if !s.is_admin {
+        return not_admin(&state, &s);
+    }
+    let c = chrome(&state, Some(&s), Nav::Admin, None);
+    if !s.csrf_matches(form.csrf.as_deref()) {
+        return csrf_failed(&c);
+    }
+    let (Ok(id), Some(action)) = (id.parse::<Uuid>(), parse_opt::<Resolution>(&form.action)) else {
+        return error_page(&c, ApiError::NotFound);
+    };
+    match reports::resolve(&state, s.account_id, id, action).await {
+        Ok(_) | Err(ApiError::Conflict(..)) => redirect("/admin/reports?notice=resolved"),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct LogParams {
+    before: Option<i64>,
+    /// Only this administrator's entries (login name).
+    admin: Option<String>,
+    /// Only entries against this account (login name).
+    account: Option<String>,
+}
+
+pub async fn admin_log(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Query(p): Query<LogParams>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    if !s.is_admin {
+        return not_admin(&state, &s);
+    }
+    let c = chrome(&state, Some(&s), Nav::Admin, None);
+    const PAGE: u32 = 50;
+    let admin = opt(&p.admin).map(str::to_owned);
+    let account = opt(&p.account).map(str::to_owned);
+    let query = plait_proto::board::AdminLogQuery {
+        before: p.before,
+        limit: Some(PAGE),
+        admin: admin.clone(),
+        account: account.clone(),
+    };
+    match reports::admin_log(&state, &query).await {
+        Ok(entries) => {
+            let older = (entries.len() == PAGE as usize)
+                .then(|| entries.last().map(|e| e.id))
+                .flatten()
+                .map(|before| {
+                    plait_board_ui::admin_log_url(
+                        admin.as_deref(),
+                        account.as_deref(),
+                        Some(before),
+                    )
+                });
+            html(
+                StatusCode::OK,
+                plait_board_ui::admin_log_page(
+                    &c,
+                    AdminLogView {
+                        entries,
+                        older,
+                        admin,
+                        account,
+                    },
+                ),
+            )
+        }
+        Err(e) => error_page(&c, e),
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct LogEntryParams {
+    after: Option<String>,
+}
+
+pub async fn admin_log_entry(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Path(id): Path<i64>,
+    Query(p): Query<LogEntryParams>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    if !s.is_admin {
+        return not_admin(&state, &s);
+    }
+    let c = chrome(&state, Some(&s), Nav::Admin, None);
+    let after = opt(&p.after).map(str::to_owned);
+    let query = plait_proto::board::AdminLogTargetQuery {
+        after: after.clone(),
+        limit: Some(100),
+    };
+    match reports::admin_log_entry(&state, id, &query).await {
+        Ok(detail) => html(
+            StatusCode::OK,
+            plait_board_ui::admin_log_entry_page(
+                &c,
+                AdminLogEntryView {
+                    detail,
+                    paged: after.is_some(),
+                },
+            ),
+        ),
+        Err(e) => error_page(&c, e),
+    }
+}
+
+// ---- Account notices -------------------------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+pub struct NoticesParams {
+    before: Option<i64>,
+}
+
+/// Shows the account's notices, then marks them read: the page shows which
+/// were new on this visit.
+pub async fn notices(
+    State(state): State<AppState>,
+    MaybeSession(session): MaybeSession,
+    Query(p): Query<NoticesParams>,
+) -> Response {
+    let Some(s) = session else {
+        return redirect("/login");
+    };
+    const PAGE: u32 = 50;
+    let loaded = crate::notices::list(&state, s.account_id, p.before, Some(PAGE)).await;
+    let notices = match loaded {
+        Ok(n) => n,
+        Err(e) => return error_page(&chrome(&state, Some(&s), Nav::Notices, None), e),
+    };
+    if let Err(e) = crate::notices::mark_read(&state, s.account_id).await {
+        return error_page(&chrome(&state, Some(&s), Nav::Notices, None), e);
+    }
+    // The header counts what's unread after this visit: nothing.
+    let mut seen = s.clone();
+    seen.unread_notices = 0;
+    let older = (notices.len() == PAGE as usize)
+        .then(|| notices.last().map(|n| format!("/notices?before={}", n.id)))
+        .flatten();
+    html(
+        StatusCode::OK,
+        plait_board_ui::notices_page(
+            &chrome(&state, Some(&seen), Nav::Notices, None),
+            plait_board_ui::NoticesView { notices, older },
+        ),
+    )
+}

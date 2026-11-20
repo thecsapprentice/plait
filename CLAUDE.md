@@ -43,12 +43,12 @@
   enough on their own; screens must also be driven through clicks and typing.
   `docs/plan.md` ("Testing the desktop app") describes the layers.
   - Every GUI feature or change comes with interaction tests in
-    `crates/quill-ui/tests/`. They drive the app with `quill_ui::testing::Driver`
+    `crates/plait-ui/tests/`. They drive the app with `plait_ui::testing::Driver`
     against the simulated server (`testing::Sim`), by labels and field ids,
     covering the main path and what can go wrong on the way (refusals, taken
     names, outages, settings changed mid-flow).
   - The flows that matter most also run on the native backend against a real
-    server, in `crates/quill-e2e/tests/gui_flows.rs`.
+    server, in `crates/plait-e2e/tests/gui_flows.rs`.
   - When a feature needs server behaviour `Sim` doesn't have, extend `Sim`,
     keeping it faithful to the real backend.
   - Every bug found by hand gets an interaction test that fails before the

@@ -12,7 +12,7 @@ yanked = "deny"
 ignore = [
   # zbus 5's helper crates, merged into zbus 6 and so marked unmaintained;
   # not a vulnerability. Pulled in only by the Linux keychain support in
-  # quill-core (secret-service, which has no zbus 6 release yet). Remove
+  # plait-core (secret-service, which has no zbus 6 release yet). Remove
   # when secret-service moves to zbus 6.
   { id = "RUSTSEC-2026-0370", reason = "zvariant merged into zbus 6; client-only, Linux keychain" },
   { id = "RUSTSEC-2026-0371", reason = "zbus_names merged into zbus 6; client-only, Linux keychain" },
@@ -38,7 +38,7 @@ ignore = [
   # openmls_rust_crypto 0.6 doesn't use yet; remove when it does.
   { id = "RUSTSEC-2026-0387", reason = "crypto-bigint, used only by NIST curves Quill's one ciphersuite never uses; client-only" },
   # The desktop GUI's stack (3b): Dioxus desktop, wry and tao, and on Linux
-  # the gtk-rs 0.18 bindings they're built on. Client-only (quill-gui);
+  # the gtk-rs 0.18 bindings they're built on. Client-only (plait-gui);
   # check-server-deps.sh keeps all of it out of the server. Remove each when
   # the crate above it moves on.
   # fxhash: a fast non-cryptographic hash, unmaintained; used by wry's HTML

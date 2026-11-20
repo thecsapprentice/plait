@@ -6,7 +6,7 @@ MLS messages, which the server never sees and so the
 hand, as the specification, and checked against the client: every object
 the client produces must pass, and the examples in
 [`test-vectors/json-objects.json`](../test-vectors/json-objects.json) must
-give their recorded results (`cargo test -p quill-core json_object`).
+give their recorded results (`cargo test -p plait-core json_object`).
 
 | Schema | What it describes |
 | --- | --- |
