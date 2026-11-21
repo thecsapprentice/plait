@@ -326,8 +326,10 @@ fn Upkeep(server: Uuid) -> Element {
                     (m.standing.is_some(), m.signed_in(), m.status)
                 };
                 if !loaded && (status != Status::Connecting || opening_waited) {
-                    // Opened while offline: load where the login stands.
-                    let result = b.standing().await;
+                    // Not loaded yet (opened offline, or the store was busy):
+                    // open it again, which loads where the login stands once
+                    // it's open. `standing` alone can't open the store (#103).
+                    let result = b.open_server(server).await;
                     model.write().opened(server, result);
                 } else if signed_in {
                     let result = b.upkeep().await;

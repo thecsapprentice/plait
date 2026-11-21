@@ -60,6 +60,27 @@ async fn a_new_writer_gets_from_nothing_to_writing() {
     assert_eq!(sim.logins(SERVER), ["ink"]);
 }
 
+/// #103: opening while the store is still held in this process (work
+/// from a window just closed) said "Something went wrong." and never tried
+/// again. It says the store is busy, and opens it once it's free.
+#[tokio::test]
+async fn a_store_still_busy_at_start_is_said_and_opened_once_free() {
+    let sim = Sim::new().with_server(SERVER).rc();
+    let mut d = app(&sim);
+    first_run(&mut d, SERVER, "ink", "ink_fox").await;
+    drop(d);
+    sim.store_busy(SERVER, true);
+    let mut d = app(&sim);
+    d.wait_for_text("Plait is still using this server's store.")
+        .await;
+    assert!(!d.has_text("Something went wrong."));
+    assert!(d.has_text("Connecting to"));
+    sim.store_busy(SERVER, false);
+    d.wait_for_text("Hello, @ink_fox").await;
+    assert!(d.has_text("Connected to writers.example"));
+    assert!(!d.has_text("Plait is still using"), "the problem goes");
+}
+
 #[tokio::test]
 async fn a_server_that_cannot_be_reached_is_said_gently_while_typing() {
     let sim = Sim::new().with_server(SERVER).rc();
