@@ -45,7 +45,7 @@ pub enum ValidationError {
 }
 
 impl ValidationError {
-    /// Its error code (Q-90xx), the same from the server and a client.
+    /// Its error code (P-90xx), the same from the server and a client.
     pub fn code(&self) -> crate::codes::ErrorCode {
         use crate::codes::*;
         match self {

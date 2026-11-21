@@ -7,7 +7,7 @@ use plait_server::{
 use tracing_subscriber::EnvFilter;
 
 const USAGE: &str = "usage:
-  plait-server                     run the server (configured by QUILL_* variables)
+  plait-server                     run the server (configured by PLAIT_* variables)
   plait-server make-admin <login>  give an account administrator rights
   plait-server revoke-admin <login>
   plait-server grant-handle <login> <handle> [display name]

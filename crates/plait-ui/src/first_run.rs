@@ -116,7 +116,7 @@ pub fn ServerStep() -> Element {
     // gently rather than as an error.
     let (hint, invalid) = match problem() {
         Some(Problem::Unreachable(_)) => (
-            "No Quill server answers there yet. Check the address, or your connection.".to_owned(),
+            "No Plait server answers there yet. Check the address, or your connection.".to_owned(),
             false,
         ),
         Some(p) => (p.to_string(), true),
@@ -128,8 +128,8 @@ pub fn ServerStep() -> Element {
         ("Add a server", "Which other server do you use?")
     } else {
         (
-            "Welcome to Quill",
-            "Quill is a place to find writing prompts and write them together. Which server do you use?",
+            "Welcome to Plait",
+            "Plait is a place to find writing prompts and write them together. Which server do you use?",
         )
     };
     rsx! {
@@ -160,7 +160,7 @@ pub fn ServerStep() -> Element {
             }
             if need_passphrase() {
                 div { class: "notice",
-                    "This computer has no keychain for Quill to keep its key in, so choose a passphrase. You'll type it each time Quill opens this server."
+                    "This computer has no keychain for Plait to keep its key in, so choose a passphrase. You'll type it each time Plait opens this server."
                 }
                 Field {
                     label: "Passphrase for this computer",
@@ -484,7 +484,7 @@ pub fn AccountStep() -> Element {
                 } else if new && rules_to_accept() {
                     // Never a dead end: the box can't show without the rules.
                     div { class: "notice", role: "status",
-                        "{name} asks new logins to accept its rules, and Quill couldn't load them."
+                        "{name} asks new logins to accept its rules, and Plait couldn't load them."
                     }
                     div { class: "actions",
                         button { class: "secondary", onclick: reload_rules, "Load the rules" }
@@ -687,9 +687,9 @@ pub fn PreparingStep(persona: uuid::Uuid, replace: bool) -> Element {
         format!("Getting @{handle} ready")
     };
     let lede = if replace {
-        "Quill is making a new identity key for this persona here. Its other devices stop being able to write as it."
+        "Plait is making a new identity key for this persona here. Its other devices stop being able to write as it."
     } else {
-        "Quill is making the keys that keep your writing sessions private. This takes a moment, and only happens once on each computer."
+        "Plait is making the keys that keep your writing sessions private. This takes a moment, and only happens once on each computer."
     };
     rsx! {
         Card {
@@ -748,7 +748,7 @@ pub fn ElsewhereStep() -> Element {
             title,
             lede,
             p { class: "lede",
-                "Link this computer to a device where you already use Quill, and you can write as them here too. Have that device to hand: it takes a minute."
+                "Link this computer to a device where you already use Plait, and you can write as them here too. Have that device to hand: it takes a minute."
             }
             div { class: "actions",
                 button { class: "primary", onclick: move |_| model.write().begin_link(), "Link this computer" }

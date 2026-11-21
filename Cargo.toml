@@ -9,7 +9,7 @@ edition = "2024"
 rust-version = "1.97"
 publish = false
 license = "AGPL-3.0-only"
-repository = "https://github.com/thecsapprentice/quill"
+repository = "https://github.com/thecsapprentice/plait"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

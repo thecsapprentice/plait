@@ -1,4 +1,4 @@
-//! `quill backup`: the encrypted backup and the recovery code.
+//! `plait backup`: the encrypted backup and the recovery code.
 
 use anyhow::{Context, Result, bail};
 use clap::Subcommand;
@@ -10,7 +10,7 @@ use crate::{Ctx, keys_cmd::ask};
 
 /// Environment variable read for the recovery code in non-interactive use
 /// (tests, scripts).
-const CODE_ENV: &str = "QUILL_RECOVERY_CODE";
+const CODE_ENV: &str = "PLAIT_RECOVERY_CODE";
 
 #[derive(Subcommand)]
 pub enum BackupCommand {
@@ -58,7 +58,7 @@ pub async fn backup(ctx: &Ctx, cmd: BackupCommand) -> Result<()> {
                     println!();
                     println!("It's shown only now. Without it, nobody (not even the server's");
                     println!("administrators) can open the backup. This device keeps it to");
-                    println!("refresh the backup with `quill backup create`.");
+                    println!("refresh the backup with `plait backup create`.");
                 }
             })
         }
@@ -75,7 +75,7 @@ pub async fn backup(ctx: &Ctx, cmd: BackupCommand) -> Result<()> {
                     None => println!("no backup on the server"),
                 }
                 if !keeps {
-                    println!("this device doesn't hold a recovery code: `quill backup create` makes one");
+                    println!("this device doesn't hold a recovery code: `plait backup create` makes one");
                 }
             })
         }

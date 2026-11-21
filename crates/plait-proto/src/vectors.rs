@@ -6,7 +6,7 @@
 //! functions.
 //!
 //! To rewrite the files after a deliberate change:
-//! `QUILL_WRITE_VECTORS=1 cargo test -p plait-proto vectors`.
+//! `PLAIT_WRITE_VECTORS=1 cargo test -p plait-proto vectors`.
 
 // Test code: panicking on failure is intended.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -23,11 +23,11 @@ fn dir() -> std::path::PathBuf {
 fn check_file(name: &str, value: &Value) -> Value {
     let path = dir().join(name);
     let text = serde_json::to_string_pretty(value).unwrap() + "\n";
-    if std::env::var_os("QUILL_WRITE_VECTORS").is_some() {
+    if std::env::var_os("PLAIT_WRITE_VECTORS").is_some() {
         std::fs::write(&path, &text).unwrap();
     }
     let committed = std::fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("{} missing; set QUILL_WRITE_VECTORS=1", path.display()));
+        .unwrap_or_else(|_| panic!("{} missing; set PLAIT_WRITE_VECTORS=1", path.display()));
     assert_eq!(
         committed, text,
         "{name} differs from what the code generates"

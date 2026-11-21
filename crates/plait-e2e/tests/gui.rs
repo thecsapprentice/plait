@@ -189,10 +189,10 @@ async fn servers_are_added_switched_and_removed() {
 
     // Moving the stores' folder keeps both, and the open one stays open.
     let elsewhere = tempfile::tempdir().unwrap();
-    let to = elsewhere.path().join("quill-stores");
+    let to = elsewhere.path().join("plait-stores");
     app.move_stores(to.to_str().unwrap()).await.unwrap();
     assert_eq!(app.app_settings().stores_folder, to.display().to_string());
-    assert!(to.join(format!("{}.quill", second.id)).exists());
+    assert!(to.join(format!("{}.plait", second.id)).exists());
     assert_eq!(personas(&app.standing().await.unwrap()).len(), 1);
     assert_eq!(
         app.open_server(second.id).await.unwrap(),
@@ -208,7 +208,7 @@ async fn servers_are_added_switched_and_removed() {
     let keys_before = vault.as_ref().unwrap().len();
     app.remove_server(second.id).await.unwrap();
     assert_eq!(app.servers().len(), 1);
-    assert!(!to.join(format!("{}.quill", second.id)).exists());
+    assert!(!to.join(format!("{}.plait", second.id)).exists());
     assert_eq!(vault.as_ref().unwrap().len(), keys_before - 1);
     a.stop().await.unwrap();
     b.stop().await.unwrap();
@@ -308,7 +308,7 @@ async fn a_live_notice_wakes_the_app() {
 
     // Another login claiming @ink_fox's KeyPackages runs its pool low,
     // which the server tells this login about.
-    let other = server.account("quill").await.unwrap();
+    let other = server.account("plait").await.unwrap();
     let waiting = app.next_notice();
     let claim = async {
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -445,7 +445,7 @@ async fn switching_back_needs_no_passphrase_in_the_same_session() {
         .add_server(&b.url(), Some("second long passphrase"))
         .await
         .unwrap();
-    app.register("quill", PASSWORD, None).await.unwrap();
+    app.register("plait", PASSWORD, None).await.unwrap();
 
     // Both were unlocked this session: switching asks for nothing.
     for _ in 0..2 {
@@ -455,7 +455,7 @@ async fn switching_back_needs_no_passphrase_in_the_same_session() {
         ));
         assert!(matches!(
             app.open_server(second.id).await.unwrap(),
-            Standing::SignedIn { login, .. } if login == "quill"
+            Standing::SignedIn { login, .. } if login == "plait"
         ));
     }
     // Signing out of one is remembered when switching back.
@@ -714,7 +714,7 @@ async fn linking_naming_and_removing_through_the_native_backend() {
     );
     let link = desktop.start_link("Study desktop").await.unwrap();
     assert_eq!(link.words.len(), 6);
-    assert!(link.code.starts_with("quill-link:1:"));
+    assert!(link.code.starts_with("plait-link:1:"));
     assert_eq!(
         desktop.link_answer().await.unwrap(),
         None,

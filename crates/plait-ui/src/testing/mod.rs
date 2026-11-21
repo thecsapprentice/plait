@@ -569,7 +569,7 @@ impl Driver {
         self.doc
             .attached()
             .into_iter()
-            .find(|n| self.doc.attr(*n, "class") == Some("quill"))
+            .find(|n| self.doc.attr(*n, "class") == Some("plait"))
             .and_then(|n| self.doc.attr(n, name).map(str::to_owned))
     }
 

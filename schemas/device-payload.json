@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quill.example/ns/wr/schemas/1/device-payload.json",
+  "$id": "https://plait.example/ns/wr/schemas/1/device-payload.json",
   "title": "Device group payload",
   "description": "What one MLS application message in a login's own device group carries (protocol draft, section 5, as built in 2d and 2k): a JSON object tagged by type. These never appear in session groups. Unknown terms are ignored; a payload of an unknown type is skipped.",
   "type": "object",

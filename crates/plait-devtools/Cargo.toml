@@ -1,6 +1,6 @@
 [package]
 name = "plait-devtools"
-description = "Development tools for Quill. Never deployed: fills a test database with demo data."
+description = "Development tools for Plait. Never deployed: fills a test database with demo data."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

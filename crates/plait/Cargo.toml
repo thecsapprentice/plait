@@ -1,6 +1,6 @@
 [package]
 name = "plait"
-description = "Minimal Quill test client: exercises every server feature from the command line."
+description = "Minimal Plait test client: exercises every server feature from the command line."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

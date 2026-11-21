@@ -1,4 +1,4 @@
-//! `plait-seed`: fills an empty Quill database with demo data for testing.
+//! `plait-seed`: fills an empty Plait database with demo data for testing.
 //!
 //! Data goes through the server's own service functions, so it is validated,
 //! sanitized and stored exactly as if real users had created it. Afterwards
@@ -25,13 +25,13 @@ use uuid::Uuid;
 use crate::rng::Rng;
 
 /// The password every demo account shares. Demo data only.
-const DEFAULT_PASSWORD: &str = "quill demo password";
+const DEFAULT_PASSWORD: &str = "plait demo password";
 const ADMIN_LOGIN: &str = "admin";
 /// How far back prompt dates are spread.
 const MAX_AGE_DAYS: f64 = 120.0;
 
-/// Fills an empty Quill database with demo accounts, personas, prompts and
-/// reports. Connects using QUILL_DATABASE_URL, like the server.
+/// Fills an empty Plait database with demo accounts, personas, prompts and
+/// reports. Connects using PLAIT_DATABASE_URL, like the server.
 #[derive(Debug, Parser)]
 #[command(name = "plait-seed", version)]
 struct Args {
@@ -45,12 +45,12 @@ struct Args {
     #[arg(long, default_value_t = 1)]
     seed: u64,
     /// Password for every demo account.
-    #[arg(long, env = "QUILL_DEMO_PASSWORD", default_value = DEFAULT_PASSWORD)]
+    #[arg(long, env = "PLAIT_DEMO_PASSWORD", default_value = DEFAULT_PASSWORD)]
     password: String,
     /// Leave out the demo moderation scripts, chains and common data.
     #[arg(long)]
     no_automod: bool,
-    /// Also print each account as a `QUILL_CAST login handle…` line, for
+    /// Also print each account as a `PLAIT_CAST login handle…` line, for
     /// tools that act as the demo writers next (`plait-seed-sessions`).
     #[arg(long)]
     cast: bool,
@@ -270,7 +270,7 @@ async fn run(args: Args) -> Result<()> {
         println!();
         for a in &accounts {
             let handles: Vec<&str> = a.personas.iter().map(|(_, h)| h.as_str()).collect();
-            println!("QUILL_CAST {} {}", a.login, handles.join(" "));
+            println!("PLAIT_CAST {} {}", a.login, handles.join(" "));
         }
     }
     Ok(())

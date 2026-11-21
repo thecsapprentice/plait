@@ -1,4 +1,4 @@
-//! `quill keys` and `quill device`: persona identity keys and devices.
+//! `plait keys` and `plait device`: persona identity keys and devices.
 
 use anyhow::{Context, Result, bail};
 use clap::Subcommand;
@@ -87,7 +87,7 @@ pub enum DeviceCommand {
     /// sent only inside your encrypted device group; empty clears it.
     Name { name: String },
     /// On a device already in use: approve a new one with the 6 words it
-    /// shows (its waiting link is found), or its whole quill-link: code.
+    /// shows (its waiting link is found), or its whole plait-link: code.
     Approve {
         #[arg(required = true, num_args = 1..)]
         code: Vec<String>,
@@ -244,7 +244,7 @@ pub async fn keys(ctx: &Ctx, cmd: KeysCommand) -> Result<()> {
                 match s.last_resort_until {
                     Some(t) => println!("last-resort package until {}", date(t)),
                     None => println!(
-                        "no last-resort package: run `quill keys publish --as {}`",
+                        "no last-resort package: run `plait keys publish --as {}`",
                         p.handle
                     ),
                 }
@@ -365,7 +365,7 @@ pub async fn keys(ctx: &Ctx, cmd: KeysCommand) -> Result<()> {
     }
 }
 
-/// `quill devices`: this login's devices.
+/// `plait devices`: this login's devices.
 pub async fn devices(ctx: &Ctx) -> Result<()> {
     let client = ctx.client()?;
     let list = plait_core::devices::list(&ctx.store, &client).await?;
@@ -429,7 +429,7 @@ pub async fn device(ctx: &Ctx, cmd: DeviceCommand) -> Result<()> {
             let pending = devices::start_link(&ctx.store, &client).await?;
             println!("On a device you already use, run:");
             println!();
-            println!("    quill device approve {}", pending.words.join(" "));
+            println!("    plait device approve {}", pending.words.join(" "));
             println!();
             println!("or give it the whole code: {}", pending.code);
             println!("Waiting up to 10 minutes...");
@@ -452,7 +452,7 @@ pub async fn device(ctx: &Ctx, cmd: DeviceCommand) -> Result<()> {
             if !same {
                 devices::abandon_link(&ctx.store)?;
                 bail!(
-                    "the words don't match, so nothing was taken. On the other device, run `quill devices` and remove any device you don't recognise."
+                    "the words don't match, so nothing was taken. On the other device, run `plait devices` and remove any device you don't recognise."
                 );
             }
             let personas = devices::finish_link(&ctx.store, &client).await?;
@@ -476,7 +476,7 @@ pub async fn device(ctx: &Ctx, cmd: DeviceCommand) -> Result<()> {
                 println!("Approved device {}.", approved.device);
                 println!("It should now show: {}", approved.confirm.join(" "));
                 println!(
-                    "If it shows anything else, don't confirm there, and remove it here with `quill device remove {}`.",
+                    "If it shows anything else, don't confirm there, and remove it here with `plait device remove {}`.",
                     approved.device
                 );
             })
@@ -506,7 +506,7 @@ pub async fn device(ctx: &Ctx, cmd: DeviceCommand) -> Result<()> {
                 match checked.fingerprint() {
                     Some(fp) => println!("identity key: {fp}"),
                     None => println!(
-                        "no identity key yet; run `quill keys init --as {}`",
+                        "no identity key yet; run `plait keys init --as {}`",
                         p.handle
                     ),
                 }

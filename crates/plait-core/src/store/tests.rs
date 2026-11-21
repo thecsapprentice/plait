@@ -12,7 +12,7 @@ fn pass(p: &str) -> KeySetup<'_> {
 
 fn store_path() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("nested").join("store.quill");
+    let path = dir.path().join("nested").join("store.plait");
     (dir, path)
 }
 

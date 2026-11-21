@@ -393,7 +393,7 @@ async fn the_banner_shows_the_newest_until_dismissed() {
     assert_eq!(dismissed.status, StatusCode::SEE_OTHER);
     assert_eq!(dismissed.location(), "/");
     let cookie = dismissed.set_cookie().unwrap();
-    assert!(cookie.starts_with(&format!("__Host-quill_dismissed={id};")));
+    assert!(cookie.starts_with(&format!("__Host-plait_dismissed={id};")));
     for attr in ["Secure", "HttpOnly", "Path=/", "Max-Age="] {
         assert!(cookie.contains(attr), "cookie lacks {attr}: {cookie}");
     }

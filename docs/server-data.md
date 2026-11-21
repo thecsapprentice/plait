@@ -1,6 +1,6 @@
 # What the server keeps
 
-The database-dump audit for Quill's Phase 2 gate: every column of every
+The database-dump audit for Plait's Phase 2 gate: every column of every
 table, what it holds, and why holding it is acceptable. The gate is that a
 full dump of the database holds no plaintext of what writers write and no
 private keys.

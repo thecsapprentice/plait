@@ -1,15 +1,15 @@
 # Security policy
 
-Quill's central promise is that a server operator can never read writing
+Plait's central promise is that a server operator can never read writing
 sessions. Reports that threaten that promise are the highest priority.
 
 ## Reporting a vulnerability
 
 Please **do not open a public issue**. Report privately through GitHub's
-[private vulnerability reporting](https://github.com/thecsapprentice/quill/security/advisories/new)
+[private vulnerability reporting](https://github.com/thecsapprentice/plait/security/advisories/new)
 for this repository. Include steps to reproduce and the affected commit.
 
-We aim to acknowledge reports within 7 days. Quill is pre-release software:
+We aim to acknowledge reports within 7 days. Plait is pre-release software:
 there are no supported releases yet, so fixes land on `main`.
 
 ## Especially in scope

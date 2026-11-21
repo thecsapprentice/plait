@@ -163,7 +163,7 @@ mod tests {
             (
                 "allowed_sites".to_owned(),
                 1,
-                "quill.example\narchiveofourown.org".to_owned(),
+                "plait.example\narchiveofourown.org".to_owned(),
             ),
         ])
     }
@@ -233,7 +233,7 @@ mod tests {
         );
         assert_eq!(
             kind(&run("outside_links", |p| p.body =
-                "Read https://quill.example/rules".into())),
+                "Read https://plait.example/rules".into())),
             "pass"
         );
         let sub = run("outside_links", |p| {

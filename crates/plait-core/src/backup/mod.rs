@@ -36,7 +36,7 @@ const TABLES: [Table; 5] = [
     Table::Messages,
     Table::Files,
 ];
-pub(crate) const FORMAT: &str = "quill-backup";
+pub(crate) const FORMAT: &str = "plait-backup";
 /// 2: the JSON is zstd-compressed (2m).
 pub(crate) const VERSION: u32 = 2;
 /// The most a backup's plaintext may decompress to, so a damaged or hostile

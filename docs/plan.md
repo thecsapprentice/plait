@@ -88,7 +88,7 @@ Sessions between servers flow client → home delivery service → federation �
 | `plait-mls-envelope` | lib | Parses MLS framing headers (group ID, epoch, content type) without any decryption capability. Used by the server. |
 | `plait-server` | bin | axum app: API, delivery service, federation, jobs. Depends on `plait-proto` and `plait-mls-envelope` only. |
 | `plait-core` | lib | Client logic: OpenMLS groups, key store, HLC ordering, safety numbers, API client. |
-| `quill` | bin | CLI test client on `plait-core`. |
+| `plait` | bin | CLI test client on `plait-core`. |
 | `plait-e2e` | test | Multi-instance and malicious-server scenarios. |
 
 The dependency graph itself is a security control: `cargo-deny` bans `openmls_rust_crypto` and any HPKE crate from `plait-server`'s tree, so a decryption path cannot be added by accident.
@@ -172,7 +172,7 @@ A throwaway spike, not kept in the repo, ran the same four sample scripts throug
 
 Each script is compiled into its own `rhai::Engine`, once per version of its source (`ScriptCache`, keyed by id and source hash).
 
-- **Limits.** An operation count (`QUILL_AUTOMOD_MAX_OPERATIONS`, default 1,000,000) and a wall-clock cap (`QUILL_AUTOMOD_TIME_MS`, default 100 ms) as a backstop; caps on string, array and map sizes, call depth and expression depth. The string cap is at least the largest common data entry, so a full entry can always be read.
+- **Limits.** An operation count (`PLAIT_AUTOMOD_MAX_OPERATIONS`, default 1,000,000) and a wall-clock cap (`PLAIT_AUTOMOD_TIME_MS`, default 100 ms) as a backstop; caps on string, array and map sizes, call depth and expression depth. The string cap is at least the largest common data entry, so a full entry can always be read.
 - **Sandbox.** Rhai has no file, network or process functions. Two defaults are turned off: `import` (Rhai's default module resolver reads script files from disk) and `eval` (scripts run only their own uploaded source).
 - **Catching mistakes at upload.** Undeclared variables (`pots.title`) are refused by strict-variables mode; patterns written out in `text::` calls are compiled; common data names are found by walking the syntax tree, which needs Rhai's `internals` feature and so an exact version pin. A misspelled field (`post.titel`) can only be found by running the script, so every upload runs it on a sample post for each hook whose chain uses it, with `fail_on_invalid_map_property` making the typo an error rather than a silent `()`.
 - **What a script returns.** Ending with nothing is "not handled". The action functions return a type only they can make, so a script can't hand back a look-alike map; any other value is an error, which catches mistakes like `if bad { "spam" }`.
@@ -194,7 +194,7 @@ Named strings administrators keep for scripts, such as a list of blocked words, 
 - **Shared, not copied.** Each version is held once (`DataCache` in the app state) as Rhai shared strings; `lines` hands scripts a `DataList` that indexes, loops and answers `in` without copying, and `find_words` on it reuses one matcher per version. Each snapshot is warmed (parsed and its matchers built) before any script's clock starts, so the one-off build of a large list never counts against a script's time limit; folding 50,000 entries takes seconds in a debug build. Repeats are collapsed for letters only, since "100" and "10" are different numbers.
 - **Names are checked at upload.** A name must be written out in the script, so the server knows every entry a script reads (`moderation_script_data`). An upload naming a missing entry is refused, and the foreign key from that table refuses deleting an entry while any script reads it.
 - **One post sees one version.** The data a chain reads is snapshotted when the chain starts, by exact version from the history table, so a save landing mid-chain can't give two scripts different lists.
-- **Edits are protected like scripts are:** every save is a new version in `moderation_data_versions` and an admin-log entry; undo saves an old version again as a new one, so the history keeps what was undone; a save started from an older version is refused rather than overwriting someone else's change; size caps per entry and in total (`QUILL_AUTOMOD_DATA_ENTRY_BYTES`, `_TOTAL_BYTES`).
+- **Edits are protected like scripts are:** every save is a new version in `moderation_data_versions` and an admin-log entry; undo saves an old version again as a new one, so the history keeps what was undone; a save started from an older version is refused rather than overwriting someone else's change; size caps per entry and in total (`PLAIT_AUTOMOD_DATA_ENTRY_BYTES`, `_TOTAL_BYTES`).
 
 #### Context
 
@@ -405,7 +405,7 @@ There is no primary device: whichever client is set up first creates the identit
 #### Server and client changes
 
 - **Server:** KeyPackages and delivery queues are per device; an endpoint for the opaque backup blob; a short-lived relay mailbox for linking messages. None of it holds usable key material.
-- **CLI coverage:** `quill device link`, `quill device list`, `quill device revoke`, `quill backup create` and `quill backup restore`, with harness scenarios that link two CLI devices, restore from backup with no surviving device, and confirm that a server-inserted uncertified device is rejected.
+- **CLI coverage:** `plait device link`, `plait device list`, `plait device revoke`, `plait backup create` and `plait backup restore`, with harness scenarios that link two CLI devices, restore from backup with no surviving device, and confirm that a server-inserted uncertified device is rejected.
 - **Review:** device certificates and the linking flow are project glue around standard primitives and must be in the scope of the external review.
 
 ### Invariants the code must enforce
@@ -530,24 +530,24 @@ Accepted trade-off: a server-delivered web client can be subverted by an operato
 
 ## Minimal test client
 
-Ship a CLI client, `quill`, built on a reusable `plait-core` library crate, so the same code drives manual testing, scripted end-to-end tests, and any later GUI. It holds all keys; the server crate never links it.
+Ship a CLI client, `plait`, built on a reusable `plait-core` library crate, so the same code drives manual testing, scripted end-to-end tests, and any later GUI. It holds all keys; the server crate never links it.
 
 ### Commands (each exercises a server feature)
 
 | Command | Exercises |
 | --- | --- |
-| `quill register` / `login` / `persona new` | Account creation, auth, multiple actors |
-| `quill keys publish --count 20` / `keys status` | KeyPackage Create + Add, pool top-up, last-resort |
-| `quill prompt post --tag genre:horror --maturity teen` | Prompt creation, tag validation, federation fan-out |
-| `quill prompt search --include ... --exclude ... --origin federated` | Search, filters, federated board |
-| `quill tags list --namespace genre` / `tags create` | Curated vs user tags, locked namespaces |
-| `quill session request <prompt-id> --pitch file.md` | KeyPackage claim, group create, Welcome delivery |
-| `quill session accept` / `decline` | Welcome processing, `Reject` |
-| `quill session send <id> [--channel planning] [--attach ref.png] -` | Channels, attachment upload, size limits; encrypt, pad, post `PrivateMessage` |
-| `quill session read <id> --follow` | Fetch `conversation`, SSE push, decrypt, HLC sort, gap detection |
-| `quill session rotate` | Self-update commit, epoch-conflict handling |
-| `quill session verify <id>` | Safety number display and comparison |
-| `quill debug dump-envelope <id>` | Shows exactly what the server stored, proving it is opaque |
+| `plait register` / `login` / `persona new` | Account creation, auth, multiple actors |
+| `plait keys publish --count 20` / `keys status` | KeyPackage Create + Add, pool top-up, last-resort |
+| `plait prompt post --tag genre:horror --maturity teen` | Prompt creation, tag validation, federation fan-out |
+| `plait prompt search --include ... --exclude ... --origin federated` | Search, filters, federated board |
+| `plait tags list --namespace genre` / `tags create` | Curated vs user tags, locked namespaces |
+| `plait session request <prompt-id> --pitch file.md` | KeyPackage claim, group create, Welcome delivery |
+| `plait session accept` / `decline` | Welcome processing, `Reject` |
+| `plait session send <id> [--channel planning] [--attach ref.png] -` | Channels, attachment upload, size limits; encrypt, pad, post `PrivateMessage` |
+| `plait session read <id> --follow` | Fetch `conversation`, SSE push, decrypt, HLC sort, gap detection |
+| `plait session rotate` | Self-update commit, epoch-conflict handling |
+| `plait session verify <id>` | Safety number display and comparison |
+| `plait debug dump-envelope <id>` | Shows exactly what the server stored, proving it is opaque |
 
 ### Test harness
 
@@ -597,7 +597,7 @@ Recommendation: use **Dioxus** for every UI surface — the server's public prom
 Anyone visiting the server in a plain browser sees the prompt board, rendered by the server with the same Dioxus components the clients use. It handles only public plaintext and holds no keys, so its security needs are ordinary web hardening.
 
 - **Server-side rendering on axum.** Dioxus fullstack renders HTML inside the existing axum server. Search and tag filters are ordinary `GET` forms with query parameters, so the board works with JavaScript disabled (Tor Browser's safest mode); hydration only adds conveniences such as tag autocomplete.
-- **Scope.** Browse, search, filter and read prompts, plus links to the federated board. Signed-in users can also post, edit and withdraw prompts and manage personas here, using the same posting components as the clients (see below). Anything needing keys (requesting or joining a session) hands off to a client via a `quill://` link or copyable prompt URL.
+- **Scope.** Browse, search, filter and read prompts, plus links to the federated board. Signed-in users can also post, edit and withdraw prompts and manage personas here, using the same posting components as the clients (see below). Anything needing keys (requesting or joining a session) hands off to a client via a `plait://` link or copyable prompt URL.
 - **Separate origin from any key-holding client.** The board lives on the main domain; the future web client must live on its own origin (e.g. `app.` subdomain), as the web-client requirements already demand. Board pages must never load the client bundle.
 - **Crate split keeps the server crypto-free.** Board components live in `plait-board-ui`, which depends only on `plait-proto`. Session and editor components live in `plait-ui` and depend on `plait-core`. The server links `plait-board-ui` only, and the existing `cargo-deny` ban on MLS crypto crates in the server tree enforces it.
 - **Sanitized output.** Remote prompt HTML is already sanitized on ingest; the board adds a strict CSP, no third-party assets, and no inline scripts.
@@ -874,7 +874,7 @@ what. The rows still empty are tracked in #105.
 `scripts/dev-gui.py` opens its windows full of requests and sessions, so screens can be judged with a realistic amount on them.
 
 - **Why it isn't in `plait-seed`.** The board seed writes to the database. Requests and sessions are end-to-end encrypted, and a session's keys live only on its writers' devices, so the server can't be seeded with them. `plait-seed-sessions` (in `plait-e2e`, since it needs both plait-core and the app's backend, and must stay out of the Docker image) signs in as the demo writers and acts everything out against the running server.
-- **Finding the writers.** `plait-seed` picks demo logins at random, and the API has no way to list accounts. `plait-seed --cast` prints `QUILL_CAST login handle…` lines, which the script captures and passes on.
+- **Finding the writers.** `plait-seed` picks demo logins at random, and the API has no way to list accounts. `plait-seed --cast` prints `PLAIT_CAST login handle…` lines, which the script captures and passes on.
 - **The windows.** Each window's writer gets a store made by the app's own backend (adding the server, signing in, preparing every persona), so it's exactly what the app would make. The seeder then reopens that store to act. It uses the OS keychain like the app, or a printed passphrase where there's none. The other writers' devices are in memory and gone when it finishes.
 - **What's acted out.** For each window's writer: requests they sent that are waiting, accepted, declined and withdrawn; requests to them that are waiting, accepted and declined. Sessions: a long one with every channel, a named channel, an answer, an edit and a deletion, read up to its last two story notes; one never opened; one the other writer left. With two windows, they share a session and each has a request from the other to answer live.
 - **Dates.** Everything happens as the seeder runs, so requests and notes are all dated now. Spreading them out would mean rewriting times on the server and inside encrypted notes, which isn't worth it for a dev tool.
@@ -924,8 +924,9 @@ Every problem the server or a client can show has a stable code, `Q-AACC`: `AA` 
 - **Who decides, by range.** In each area, 01–49 are the server's refusals and 50–99 are what a client decides (it couldn't reach the server, this computer's store refused, a check on received keys failed). So a code says where to look as well as what happened.
 - **One code per case.** The server sets the code at each place it refuses something, and sends it as a `code` member of its problem+json reply. The same case in several places shares a code. Input checks (`ValidationError`) carry one code per kind, the same from the server and a client.
 - **Core.** `CoreError::code()` gives the server's code for its refusals (or, from a server older than #76, the code its HTTP status implies), and core's own otherwise. Each core module's error helper gives its area's "a check failed" code, and the cases people see get codes of their own (a pitch too long, a link expired, a changed key).
-- **Shown.** The CLI prints `error Q-3001: …` for every error, its own usage errors included (`Q-9050`). The desktop app shows codes only in advanced mode, beside the words; the default view stays plain.
-- **Stable.** A code never changes meaning. A retired code is listed in `RETIRED` and never reused. Something with no code of its own yet is `Q-9950`, with the detail in advanced mode, so it can still be reported.
+- **Shown.** The CLI prints `error P-3001: …` for every error, its own usage errors included (`P-9050`). The desktop app shows codes only in advanced mode, beside the words; the default view stays plain.
+- **Prefix.** Codes were shown as `Q-3009` until the rebrand changed the prefix to `P-` (R3, #84, 2026-11-20). Only the shown prefix changed: the number is what clients and logs key on, and nothing had been released.
+- **Stable.** A code never changes meaning. A retired code is listed in `RETIRED` and never reused. Something with no code of its own yet is `P-9950`, with the detail in advanced mode, so it can still be reported.
 
 ### Testing the desktop app
 
@@ -960,7 +961,7 @@ A hostile or compromised server can still say misleading things in its text, but
 | `plait-board-ui` | Prompt board components (list, filters, prompt view, tags, prompt posting and editing, persona picker); depends only on `plait-proto` | Phase 1 |
 | `plait-ui` | The client's views and app state; reaches `plait-core` only through its `Backend` trait, so the web client can supply its own | GUI phase (3b) |
 | `plait-gui` | Desktop binary and the native `Backend`: `plait-ui` + native `plait-core` (encrypted stores, keychain) | GUI phase (3b) |
-| `quill-web` | Wasm entry point: both UI crates + web `plait-core` (IndexedDB, RustCrypto) | Web-client phase |
+| `plait-web` | Wasm entry point: both UI crates + web `plait-core` (IndexedDB, RustCrypto) | Web-client phase |
 
 Phase 1 builds the board on Dioxus fullstack, which validates the SSR path early. A one-week spike at the start of the GUI phase should then build the session view (channels, long-form editor, image attachment) in Dioxus on both targets and test IME, spellcheck and screen-reader behavior before committing.
 
@@ -970,11 +971,11 @@ Build single-server encryption before federation, so the hardest property (serve
 
 ```mermaid
 flowchart TD
-  P0["<b>Phase 0 · Foundations</b><br/>workspace, CI with cargo-deny / audit / vet, protocol spec,<br/>Postgres schema, accounts and personas, quill CLI skeleton"]
+  P0["<b>Phase 0 · Foundations</b><br/>workspace, CI with cargo-deny / audit / vet, protocol spec,<br/>Postgres schema, accounts and personas, plait CLI skeleton"]
   P1["<b>Phase 1 · Prompt board</b><br/>prompts, tag policies, filters, full-text search, prompt-to-session rules,<br/>SSR board (plait-board-ui): sign-in, posting, personas, reports, admin inbox"]
   P2["<b>Phase 2 · Encrypted sessions on one server</b><br/>encrypted local store, identity keys per persona, device certificates, linking, backup; KeyPackages, Welcome flow;<br/>channels, attachments, limits, epoch sequencer, HLC ordering, SSE, safety numbers"]
   P3["<b>Phase 3 · Desktop GUI</b><br/>plait-gui on Dioxus desktop, shared plait-ui, native key storage"]
-  P4["<b>Phase 4 · Web client</b><br/>quill-web: Rust to WebAssembly on its own origin, verifiable builds"]
+  P4["<b>Phase 4 · Web client</b><br/>plait-web: Rust to WebAssembly on its own origin, verifiable builds"]
   P5["<b>Phase 5 · Federation</b><br/>actors, HTTP Signatures, board follows, cross-server sessions<br/>sequenced by the prompt author's server, two-instance harness"]
   P6["<b>Phase 6 · Hardening and review</b><br/>malicious-server suite, parser fuzzing, external review,<br/>operations runbook, disclosure policy, Tor onion service"]
 

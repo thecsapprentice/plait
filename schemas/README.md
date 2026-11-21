@@ -19,5 +19,5 @@ Each describes what a sender must produce; readers ignore unknown terms,
 and are lenient where a schema's description says so. Schemas for the
 federated objects (`Prompt`, the session request's `Offer`, the actor
 extensions) come with federation in Phase 5, with the `wr:` context
-document. The `quill.example` URLs are placeholders until the project's
+document. The `plait.example` URLs are placeholders until the project's
 domain is chosen.

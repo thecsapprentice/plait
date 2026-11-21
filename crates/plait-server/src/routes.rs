@@ -66,7 +66,7 @@ async fn instance(State(state): State<AppState>) -> Result<Json<InstanceInfo>, A
     let settings = crate::server_settings::settings(&state).await?;
     Ok(Json(InstanceInfo {
         domain: state.config.domain.clone(),
-        software: "quill".into(),
+        software: "plait".into(),
         software_version: env!("CARGO_PKG_VERSION").into(),
         protocol_versions: plait_proto::PROTOCOL_VERSIONS
             .iter()

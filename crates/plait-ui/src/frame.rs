@@ -155,7 +155,7 @@ fn Nav() -> Element {
         }
     };
     rsx! {
-        nav { class: "nav", aria_label: "Quill",
+        nav { class: "nav", aria_label: "Plait",
             div { class: "switchers",
                 div {
                     label { r#for: "server-switch", "Server" }
@@ -437,7 +437,7 @@ fn Home() -> Element {
         }
         if nudge {
             div { class: "nudge",
-                p { "Quill can't back up your personas' keys yet, and will remind you here when it can. Until then, a linked device keeps a second copy." }
+                p { "Plait can't back up your personas' keys yet, and will remind you here when it can. Until then, a linked device keeps a second copy." }
                 button {
                     class: "quiet",
                     onclick: move |_| model.write().backup_nudge_dismissed = true,

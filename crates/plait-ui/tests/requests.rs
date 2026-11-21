@@ -611,7 +611,7 @@ async fn after_a_key_changes_the_stop_shows_the_words_the_other_writer_sees() {
 }
 
 /// Found by hand (3e): a request sent as one login and read as another on
-/// the same computer said it "failed Quill's checks" and "may have been
+/// the same computer said it "failed Plait's checks" and "may have been
 /// changed on the way", as if tampered with. This computer only sent it,
 /// from the other login, so it can't read it as the author: it says so.
 #[tokio::test]
@@ -649,7 +649,7 @@ async fn a_request_sent_from_this_computer_under_another_login_says_so() {
     d.click("Read them").await;
     d.wait_for_text("This computer sent it, from another login")
         .await;
-    assert!(!d.has_text("failed Quill's checks"));
+    assert!(!d.has_text("failed Plait's checks"));
     assert!(!d.has_button("Accept"));
     assert!(d.has_button("Decline…"));
 }

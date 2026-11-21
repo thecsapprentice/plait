@@ -1,6 +1,6 @@
 [package]
 name = "plait-core"
-description = "Quill client library: API client, local state and (from Phase 2) MLS sessions. Never linked by the server."
+description = "Plait client library: API client, local state and (from Phase 2) MLS sessions. Never linked by the server."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -22,7 +22,7 @@ fn Words(handle: String, words: Option<Vec<String>>) -> Element {
         },
         Some(w) => rsx! {
             p { class: "hint",
-                "@{handle} sees these same 12 words for the two of you. If either of you ever sees a changed key, read them to each other some other way than Quill."
+                "@{handle} sees these same 12 words for the two of you. If either of you ever sees a changed key, read them to each other some other way than Plait."
             }
             ol { class: "words", aria_label: "Your words with @{handle}",
                 for (i, word) in w.iter().enumerate() {
@@ -122,7 +122,7 @@ pub fn WordsLookup() -> Element {
         section { class: "panel", aria_labelledby: "words-title",
             h2 { id: "words-title", "Compare words with another writer" }
             p {
-                "If a writer's identity key changes, Quill asks you both to compare 12 words. Find yours with them here, as @{mine}."
+                "If a writer's identity key changes, Plait asks you both to compare 12 words. Find yours with them here, as @{mine}."
             }
             Field {
                 label: "Their handle",

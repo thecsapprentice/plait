@@ -1,6 +1,6 @@
 [package]
 name = "plait-proto"
-description = "Shared wire types and validation for the Quill client API and federation. Contains no cryptography."
+description = "Shared wire types and validation for the Plait client API and federation. Contains no cryptography."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

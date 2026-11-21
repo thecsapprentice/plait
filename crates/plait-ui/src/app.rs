@@ -66,7 +66,7 @@ pub fn App() -> Element {
     rsx! {
         // Text size scales everything sized in rem.
         style { "html {{ font-size: {size}%; }}" }
-        div { class: "quill", "data-theme": theme,
+        div { class: "plait", "data-theme": theme,
             match m.screen {
                 Screen::Starting => rsx! { first_run::Starting {} },
                 Screen::Server => rsx! { first_run::ServerStep {} },

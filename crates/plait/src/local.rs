@@ -1,5 +1,5 @@
 //! The encrypted local store: opening it, creating it on first use, and the
-//! `quill store` commands.
+//! `plait store` commands.
 
 use std::path::{Path, PathBuf};
 
@@ -15,11 +15,11 @@ use crate::Ctx;
 
 /// Environment variable read for the store passphrase in non-interactive use
 /// (tests, scripts, machines without a keychain). Prefer the keychain.
-pub const PASSPHRASE_ENV: &str = "QUILL_STORE_PASSPHRASE";
+pub const PASSPHRASE_ENV: &str = "PLAIT_STORE_PASSPHRASE";
 
-/// Environment variable read for the new passphrase by `quill store
+/// Environment variable read for the new passphrase by `plait store
 /// passphrase`, when the current one is in [`PASSPHRASE_ENV`].
-pub const NEW_PASSPHRASE_ENV: &str = "QUILL_STORE_NEW_PASSPHRASE";
+pub const NEW_PASSPHRASE_ENV: &str = "PLAIT_STORE_NEW_PASSPHRASE";
 
 /// Shortest passphrase accepted for a new store.
 const MIN_PASSPHRASE: usize = 12;

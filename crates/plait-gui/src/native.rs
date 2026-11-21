@@ -381,7 +381,7 @@ fn check_passphrase(p: &str) -> Result<(), Problem> {
 fn busy() -> Problem {
     Problem::refused(
         codes::STORE_BUSY,
-        "Quill is still using this server's store. Try again in a moment.",
+        "Plait is still using this server's store. Try again in a moment.",
     )
 }
 
@@ -431,7 +431,7 @@ impl NativeBackend {
     }
 
     fn store_path(&self, id: Uuid) -> PathBuf {
-        self.stores_folder().join(format!("{id}.quill"))
+        self.stores_folder().join(format!("{id}.plait"))
     }
 
     fn save_settings(&self) -> Result<(), Problem> {
@@ -2178,7 +2178,7 @@ impl Backend for NativeBackend {
             }
             let ids: Vec<Uuid> = lock(&self.settings).servers.iter().map(|s| s.id).collect();
             for id in &ids {
-                let target = to.join(format!("{id}.quill"));
+                let target = to.join(format!("{id}.plait"));
                 if target.exists() {
                     return Err(Problem::refused(
                         codes::STORES_NOT_MOVED,
@@ -2194,11 +2194,11 @@ impl Backend for NativeBackend {
             lock(&self.unlocked).clear();
             std::fs::create_dir_all(&to).map_err(failed)?;
             for id in &ids {
-                let source = from.join(format!("{id}.quill"));
+                let source = from.join(format!("{id}.plait"));
                 if !source.exists() {
                     continue;
                 }
-                let target = to.join(format!("{id}.quill"));
+                let target = to.join(format!("{id}.plait"));
                 if std::fs::rename(&source, &target).is_err() {
                     // Another disk: copy, then remove the original.
                     std::fs::copy(&source, &target).map_err(failed)?;

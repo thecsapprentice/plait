@@ -28,7 +28,7 @@ fn status(err: &CoreError) -> u16 {
 async fn instance_reports_limits_and_versions() {
     let server = server!();
     let info = server.client().instance().await.unwrap();
-    assert_eq!(info.software, "quill");
+    assert_eq!(info.software, "plait");
     assert_eq!(info.protocol_versions, vec!["0.1"]);
     assert_eq!(info.limits.max_message_bytes, 65536);
     assert!(!info.email_recovery);
@@ -240,7 +240,7 @@ async fn bad_tokens_are_rejected() {
         "qt_",
         "qt_notarealtoken",
         "Bearer qt_x",
-        "not-a-quill-token",
+        "not-a-plait-token",
     ] {
         let err = server
             .client()

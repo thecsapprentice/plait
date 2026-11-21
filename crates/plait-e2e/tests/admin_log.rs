@@ -106,7 +106,7 @@ async fn every_entry_names_who_acted_and_against_whom() {
     .await
     .unwrap();
     // A server-made entry: a restart that syncs a reserved-handles file.
-    let dir = std::env::temp_dir().join(format!("quill-log-{}", Uuid::now_v7()));
+    let dir = std::env::temp_dir().join(format!("plait-log-{}", Uuid::now_v7()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("r.txt"), "acme\n").unwrap();
     let file = dir.join("r.txt");

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Quill client API",
-    "description": "The JSON-over-HTTPS API every Quill client uses (protocol draft, section 7). Federation between servers uses ActivityPub instead.\n\nAuthenticated operations take `Authorization: Bearer <token>` from `POST /auth/register` or `POST /auth/login`. Errors are RFC 9457 problem details (`application/problem+json`). Every request body is size-checked before it is parsed: JSON bodies against the instance's `limits.maxEnvelopeBytes`, MLS objects inside them against `limits.maxMessageBytes`, blobs against `limits.maxAttachmentBytes` and backup parts against 8 MiB (`GET /instance` publishes the limits). Lists that page take `limit` and a cursor (`before`, `after` or `cursor`, as each operation says).\n\nPrivacy: sign-in fails the same way, in the same time, whether or not the login exists; a requester can't tell a held, pending, declined or expired request apart; and nothing a writer writes in a session reaches the server except as MLS ciphertext.",
+    "title": "Plait client API",
+    "description": "The JSON-over-HTTPS API every Plait client uses (protocol draft, section 7). Federation between servers uses ActivityPub instead.\n\nAuthenticated operations take `Authorization: Bearer <token>` from `POST /auth/register` or `POST /auth/login`. Errors are RFC 9457 problem details (`application/problem+json`). Every request body is size-checked before it is parsed: JSON bodies against the instance's `limits.maxEnvelopeBytes`, MLS objects inside them against `limits.maxMessageBytes`, blobs against `limits.maxAttachmentBytes` and backup parts against 8 MiB (`GET /instance` publishes the limits). Lists that page take `limit` and a cursor (`before`, `after` or `cursor`, as each operation says).\n\nPrivacy: sign-in fails the same way, in the same time, whether or not the login exists; a requester can't tell a held, pending, declined or expired request apart; and nothing a writer writes in a session reaches the server except as MLS ciphertext.",
     "license": {
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
@@ -12171,7 +12171,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "The error code (`plait_proto::codes`, `docs/error-codes.md`): `3009`\nis shown as `Q-3009`. Absent from servers older than #76.",
+            "description": "The error code (`plait_proto::codes`, `docs/error-codes.md`): `3009`\nis shown as `P-3009`. Absent from servers older than #76.",
             "minimum": 0
           },
           "detail": {

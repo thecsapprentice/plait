@@ -1,4 +1,4 @@
-//! Shared types for the Quill client API (`/api/v1`) and, later, the
+//! Shared types for the Plait client API (`/api/v1`) and, later, the
 //! ActivityPub `wr:` vocabulary.
 //!
 //! This crate is linked by both the server and clients, so it must never

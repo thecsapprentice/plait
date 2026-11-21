@@ -221,7 +221,7 @@ pub struct Problem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     /// The error code (`plait_proto::codes`, `docs/error-codes.md`): `3009`
-    /// is shown as `Q-3009`. Absent from servers older than #76.
+    /// is shown as `P-3009`. Absent from servers older than #76.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<u16>,
 }
@@ -248,7 +248,7 @@ mod tests {
     fn instance_info_uses_camel_case() {
         let info = InstanceInfo {
             domain: "alpha.test".into(),
-            software: "quill".into(),
+            software: "plait".into(),
             software_version: "0.1.0".into(),
             protocol_versions: vec!["0.1".into()],
             registration_open: true,

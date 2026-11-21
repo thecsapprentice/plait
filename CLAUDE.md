@@ -1,4 +1,4 @@
-# Working on Quill
+# Working on Plait
 
 ## Planning and tracking work
 
@@ -65,5 +65,5 @@ General principles to maintain for how the software feels to use:
   moderate the public side of the service with their desire not to know too
   much about what people are writing about privately.
 - **Smooth, low-barrier clients.** The client experience should be smooth and
-  frictionless, with low barriers to entry, because Quill competes with
+  frictionless, with low barriers to entry, because Plait competes with
   established ecosystems and software that have a strong user base.

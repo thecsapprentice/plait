@@ -330,7 +330,7 @@ pub async fn send(
 pub(crate) fn not_set_up(handle: &str) -> CoreError {
     CoreError::coded(
         codes::NO_KEYS_HERE,
-        format!("@{handle} has no keys on this device: run `quill keys init --as {handle}` first"),
+        format!("@{handle} has no keys on this device: run `plait keys init --as {handle}` first"),
     )
 }
 
@@ -641,7 +641,7 @@ pub async fn accept(store: &Store, client: &Client, id: Uuid) -> Result<String, 
     let Some(mut note) = held(store, id)? else {
         return Err(CoreError::coded(
             codes::READ_IT_HERE_FIRST,
-            "read the request on this device first (`quill request inbox PROMPT`)",
+            "read the request on this device first (`plait request inbox PROMPT`)",
         ));
     };
     if note.role != Role::Incoming {

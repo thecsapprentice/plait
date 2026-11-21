@@ -456,7 +456,7 @@ fn apply(
                 clock: None,
             })
         }
-        // Quill sends no standalone proposals.
+        // Plait sends no standalone proposals.
         _ => Err(err("an unexpected proposal")),
     }
 }

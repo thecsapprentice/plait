@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quill.example/ns/wr/schemas/1/activity.json",
+  "$id": "https://plait.example/ns/wr/schemas/1/activity.json",
   "title": "Session activity",
   "description": "What one MLS application message in a session carries (protocol draft, section 5): one ActivityStreams activity in UTF-8 JSON, read as plain JSON (no JSON-LD expansion). Unknown terms are ignored. This is what a sender must produce; readers are lenient where noted: a malformed channel files the note under story, a malformed clock reads as 0-0000, and activities of other types, or about notes they can't find, are discarded.",
   "type": "object",
@@ -11,7 +11,7 @@
       "items": { "type": "string" },
       "allOf": [
         { "contains": { "const": "https://www.w3.org/ns/activitystreams" } },
-        { "contains": { "const": "https://quill.example/ns/wr/1.0" } }
+        { "contains": { "const": "https://plait.example/ns/wr/1.0" } }
       ]
     },
     "type": {

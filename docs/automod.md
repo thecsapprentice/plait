@@ -247,10 +247,10 @@ can't slow the server. The server's operator sets these:
 
 | Setting | Default |
 | --- | --- |
-| `QUILL_AUTOMOD_MAX_OPERATIONS`: steps a script may take on one post | 1,000,000 |
-| `QUILL_AUTOMOD_TIME_MS`: time a script may take on one post | 100 ms |
-| `QUILL_AUTOMOD_DATA_ENTRY_BYTES`: largest common data entry | 1 MiB |
-| `QUILL_AUTOMOD_DATA_TOTAL_BYTES`: all common data together | 16 MiB |
+| `PLAIT_AUTOMOD_MAX_OPERATIONS`: steps a script may take on one post | 1,000,000 |
+| `PLAIT_AUTOMOD_TIME_MS`: time a script may take on one post | 100 ms |
+| `PLAIT_AUTOMOD_DATA_ENTRY_BYTES`: largest common data entry | 1 MiB |
+| `PLAIT_AUTOMOD_DATA_TOTAL_BYTES`: all common data together | 16 MiB |
 
 Scripts can't read files, reach the network, or load other scripts.
 
@@ -282,18 +282,18 @@ let per_hour = 3;
 
 ## From the command line
 
-Everything on these pages is also in the `quill` CLI, for administrators:
+Everything on these pages is also in the `plait` CLI, for administrators:
 
 ```sh
-quill admin automod templates
-quill admin automod template blocked_words
-quill admin automod data set blocked_words words.txt
-quill admin automod chain prompt_created --on-error continue "Blocked words and phrases"
-quill admin automod dry-run prompt_created --title "A deal" --body "s p a m for sale"
-quill admin automod upload "My rule" my-rule.rhai --log-only
+plait admin automod templates
+plait admin automod template blocked_words
+plait admin automod data set blocked_words words.txt
+plait admin automod chain prompt_created --on-error continue "Blocked words and phrases"
+plait admin automod dry-run prompt_created --title "A deal" --body "s p a m for sale"
+plait admin automod upload "My rule" my-rule.rhai --log-only
 ```
 
-`quill admin automod --help` lists the rest, and the API is under
+`plait admin automod --help` lists the rest, and the API is under
 `/api/v1/admin/moderation` (see `docs/openapi.json`).
 
 ## More Rhai

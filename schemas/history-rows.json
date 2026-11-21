@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quill.example/ns/wr/schemas/1/history-rows.json",
+  "$id": "https://plait.example/ns/wr/schemas/1/history-rows.json",
   "title": "History rows",
   "description": "A history bundle's rows (as built in 2k), the plaintext of a part without a file: the notes with a version logged in the range, each with every version; every channel and its descriptions; and the authorSeq values seen per sending device. The receiver merges them: notes it lacks are added, notes it has gain the versions they lack, and counts are joined. Unknown terms are ignored.",
   "type": "object",

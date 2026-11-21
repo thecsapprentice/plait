@@ -68,7 +68,7 @@ pub(crate) async fn delete_orphan_blobs(
 }
 
 /// One pass: deletes by age (unless `retention_days` is `None`, set by
-/// `QUILL_RETENTION_DAYS=-1`), then what's acknowledged and past the grace
+/// `PLAIT_RETENTION_DAYS=-1`), then what's acknowledged and past the grace
 /// period (which no new acknowledgement may come along to trigger), then
 /// orphaned blobs and stale rejoin requests.
 pub async fn sweep(pool: &PgPool, retention_days: Option<u32>) -> Result<Swept, ApiError> {

@@ -37,7 +37,7 @@ reports before they're saved, and can refuse, flag or dismiss. Scripts are
 in Rhai with a native `text` API, read shared common data, run in an
 ordered chain per hook with an error setting, and start from seven
 templates. Admin pages under Server settings → Moderation, the
-`/admin/moderation` API and `quill admin automod`. Design: the
+`/admin/moderation` API and `plait admin automod`. Design: the
 architecture document, "Automated moderation"; reference for admins:
 [automod.md](automod.md).
 
@@ -94,7 +94,7 @@ refused (409) rather than logged twice. The admin log also refuses
 
 - **New tags from writers**, one switch in Server settings, changeable at any
   time: *Allowed*, *Need approval* or *Not allowed*. It replaces the
-  `QUILL_TAG_POLICY` variable, which now only sets the starting value
+  `PLAIT_TAG_POLICY` variable, which now only sets the starting value
   (`open`, `approval` or `curated`; the old `user` and `both` mean `open`).
   A tag type marked curated-only still refuses new tags whatever the switch
   says. Each change is logged.
@@ -162,14 +162,14 @@ back correctly from tag to type to none.
 - **Reserved handles.** Writers can't create personas with them ("reserved
   for this server's staff"). The list is the administrators' (decided
   2026-10-22, not hard-coded):
-  - It starts as Quill's defaults, seeded once: staff words (`admin`,
-    `moderator`, `support`, `quill`, …) and exact names that could pass for
+  - It starts as Plait's defaults, seeded once: staff words (`admin`,
+    `moderator`, `support`, `plait`, …) and exact names that could pass for
     the system or a page (`everyone`, `api`, `inbox`, …). Administrators may
     remove any of them.
   - Administrators add and remove entries in **Server settings → Handles**
     (one per line, with a tester showing which entry reserves a handle) or
     the API and CLI.
-  - `QUILL_RESERVED_HANDLES_FILE` names a file synced at every start, for
+  - `PLAIT_RESERVED_HANDLES_FILE` names a file synced at every start, for
     large or automated lists: one per line, a word unless it starts with
     `=`, `#` comments. Its entries can only change in the file; a bad line
     stops startup with line numbers. Syncs are logged as the server's.
@@ -220,7 +220,7 @@ prompts and tags, readable only by that account.
   appeals) adds new kinds rather than reworking this. Clients render the
   text.
 - API `GET /account/notices`, `POST /account/notices/read`; the unread count
-  in `GET /account`. CLI `quill account notices`.
+  in `GET /account`. CLI `plait account notices`.
 - **Accountability in the admin log** (administrators only). Every entry
   records who acted (an administrator, by login name as it was; the server
   itself; or a writer's report, whose writer stays unnamed) and which
@@ -229,7 +229,7 @@ prompts and tags, readable only by that account.
   can see what each of them is doing and when. Both records stay
   append-only and survive account deletion. Existing entries were
   backfilled from notices and reported prompts. API `GET
-  /admin/log?admin=&account=`; CLI `quill admin log --admin --account`.
+  /admin/log?admin=&account=`; CLI `plait admin log --admin --account`.
 - **Long lists of affected accounts.** One decision can reach thousands of
   accounts (deleting a common tag), so log listings name the first five
   (an account being filtered for comes first) and link "and N more" to the
@@ -237,7 +237,7 @@ prompts and tags, readable only by that account.
   time, each with the prompts the decision touched as they were then, and
   whether each prompt is still on the server. Notices for such a decision
   are written in batches. API `GET /admin/log/{id}?after=&limit=`; CLI
-  `quill admin log-entry ID --after`.
+  `plait admin log-entry ID --after`.
 
 Done when: end-to-end tests show each action reaching exactly the affected
 accounts, with nothing about reporters or administrators, and unread counts
@@ -295,13 +295,13 @@ sub-phases add their tables (keys, trust pins, MLS state, history).
   moving to the keychain rewraps the data key; it doesn't re-encrypt, so an
   older copy of the file still opens with the old passphrase.
 - **One process at a time**: the file is locked while open.
-- **CLI.** `quill` opens the store on every command, creating it on first use
+- **CLI.** `plait` opens the store on every command, creating it on first use
   in the keychain if the computer has one, otherwise with a passphrase.
-  `QUILL_STORE` and `--store` choose the file; `QUILL_STORE_PASSPHRASE`
+  `PLAIT_STORE` and `--store` choose the file; `PLAIT_STORE_PASSPHRASE`
   supplies the passphrase for scripts and tests. The server address and
   login token move into the store, and the old plain `profile.json` is
-  imported and deleted. `quill store status`, `quill store passphrase` and
-  `quill store keychain`.
+  imported and deleted. `plait store status`, `plait store passphrase` and
+  `plait store keychain`.
 
 Done when: tests show the file holds no plaintext, refuses wrong keys and
 altered pages, survives torn page and header writes and a crash at every
@@ -352,11 +352,11 @@ encrypts yet: 2c uses these keys for MLS.
   each persona; a later different key is reported as a change, never
   accepted silently. Safety numbers come in 2j.
 - **CLI:**
-  - `quill keys init --as HANDLE` creates and publishes keys.
-  - `quill keys show HANDLE` fetches any persona's keys, checks every
+  - `plait keys init --as HANDLE` creates and publishes keys.
+  - `plait keys show HANDLE` fetches any persona's keys, checks every
     certificate, and reports its fingerprint and pin status.
-  - `quill device list --as HANDLE` and
-    `quill device revoke DEVICE --as HANDLE [--reason lost|compromised|retired]`.
+  - `plait device list --as HANDLE` and
+    `plait device revoke DEVICE --as HANDLE [--reason lost|compromised|retired]`.
   - On a second computer, `keys init` refuses to replace a persona's key
     unless given `--new-identity`, which warns that other devices stop
     working until linked (2d).
@@ -388,8 +388,8 @@ persona and check it. Groups themselves come in 2f.
 - **The pool.** Each device keeps up to 20 one-time KeyPackages per persona
   on the server, plus one last-resort package (reused only when the others
   run out, replaced when it nears expiry).
-  - `quill keys publish --as HANDLE [--count N]` tops it up.
-  - `quill keys status --as HANDLE` shows what's left.
+  - `plait keys publish --as HANDLE [--count N]` tops it up.
+  - `plait keys status --as HANDLE` shows what's left.
   - The server holds at most 100 one-time packages per device.
 - **Server checks** (structure only, no MLS library): `plait-mls-envelope`
   parses a KeyPackage just far enough to check that it's MLS 1.0, our
@@ -434,12 +434,12 @@ full devices are linked; limited devices wait for the web client.
   personas. The server knows the group belongs to the login, as it already
   knows the login's personas.
 - **Linking**, following the protocol draft:
-  1. On the new device, signed in to the same login: `quill device link`.
+  1. On the new device, signed in to the same login: `plait device link`.
      It makes its account device key and a KeyPackage, posts them to a
      mailbox that expires in 10 minutes, and shows a code:
-     `quill-link:1:HOST:LINK_ID:FINGERPRINT`, plus 6 words from the
+     `plait-link:1:HOST:LINK_ID:FINGERPRINT`, plus 6 words from the
      fingerprint (BIP-39 English).
-  2. On a device already in use: `quill device approve CODE` (or the link
+  2. On a device already in use: `plait device approve CODE` (or the link
      id and the 6 words). It checks the KeyPackage against the fingerprint,
      so the server can't swap in its own, adds the new device to the
      personal group, and sends it, inside the group, every persona's
@@ -462,11 +462,11 @@ full devices are linked; limited devices wait for the web client.
   a session through its last-resort package sends a key update on its next
   run; in 2g, the server tells open clients over the live event stream
   when their pool runs low.
-- **Removing a device:** `quill device remove ID` takes it out of the group
+- **Removing a device:** `plait device remove ID` takes it out of the group
   (rotating the group's keys) and revokes each of its persona devices. A
   removed device that catches up deletes the identity keys it held.
-- **CLI:** `quill device link`, `quill device approve`, `quill devices`
-  (the login's devices and their persona devices), `quill device remove`.
+- **CLI:** `plait device link`, `plait device approve`, `plait devices`
+  (the login's devices and their persona devices), `plait device remove`.
 
 Done when: a second and third device link in any order and all three stay
 in sync; a substituted KeyPackage or a server-made group is caught by the
@@ -484,7 +484,7 @@ log the server sequences, on 2d's group message log. Everything after
 acceptance (the session list, Welcomes for devices that weren't in the
 request, writing, Leave) is 2f.
 
-- **Sending** (`quill request send PROMPT --as HANDLE`):
+- **Sending** (`plait request send PROMPT --as HANDLE`):
   1. Claim one KeyPackage per device of the prompt's author (2c's checks:
      directory, certificates, the TOFU pin). With no usable package, stop.
   2. Claim KeyPackages for the requesting persona's other devices, if it
@@ -509,7 +509,7 @@ request, writing, Leave) is 2f.
   (accepted), or *no response* (after expiry). The author sees pending
   requests (and how many are held) with the requester's persona and the
   ciphertext, which their client decrypts.
-- **Reading a request** (`quill request inbox PROMPT [--held]`): the
+- **Reading a request** (`plait request inbox PROMPT [--held]`): the
   author's device joins the group from the Welcome and checks every member
   against the directory: each must be a valid device of the requester or of
   the author's persona, and the pitch must come from one of the
@@ -517,15 +517,15 @@ request, writing, Leave) is 2f.
   genuine. The pitch is kept in the local store, since MLS decrypts each
   message only once. A device that wasn't in the request (linked later)
   says so; 2f brings it in after acceptance.
-- **Accepting** (`quill request accept ID`, after reading it): the server
+- **Accepting** (`plait request accept ID`, after reading it): the server
   registers the session group at the pitch's epoch, puts the pitch at the
   head of its log, and records the two personas as its members, so both
   logins (and only they) can read and post to it.
-- **Declining** (`quill request decline ID`) tells the requester nothing:
+- **Declining** (`plait request decline ID`) tells the requester nothing:
   the server keeps a ciphertext-free record until expiry, so the slot
   stays taken. The author's devices drop the group.
-- **Withdrawing** (`quill request withdraw ID`) deletes a request that isn't
-  a session yet; `quill request list` shows the login's requests.
+- **Withdrawing** (`plait request withdraw ID`) deletes a request that isn't
+  a session yet; `plait request list` shows the login's requests.
 - **Expiry:** the earlier of the requester's choice and 30 days. Deleting a
   prompt, or the author's persona or login, or an administrator removing
   the prompt after a report, expires its waiting requests at once, so the requester sees *no response* rather than the request
@@ -557,7 +557,7 @@ the author's server sequences. 2f makes it usable: every device of both
 writers joins, they write and read, and either can leave. Ordering by the
 writers' clocks, edits and deletions, and live delivery are 2g.
 
-- **The session list** (`GET /sessions`, `quill sessions`): the login's
+- **The session list** (`GET /sessions`, `plait sessions`): the login's
   sessions, each with its group id, both personas, the prompt (while it
   exists), its place in the log, whether it has ended, and the Welcomes
   waiting for this login's devices. The session id is the group id; the
@@ -590,14 +590,14 @@ writers' clocks, edits and deletions, and live delivery are 2g.
   - a commit removing a device: it's the committer's own persona's device.
   A change that fails is refused: the device stops reading the session and
   reports why, rather than going on in a group it can't trust.
-- **Writing and reading** (`quill session write ID`, `quill session read
+- **Writing and reading** (`plait session write ID`, `plait session read
   ID`): messages are AS2 `Create`s of Markdown `Note`s, in the `story`
   channel unless another is given, encrypted to the group and appended to
   the log. Each device decrypts the log in order and keeps what it read in
   the encrypted store (MLS decrypts a message only once, and a device can't
   decrypt its own), so reading is local. A device added later reads from
   when it joined; sharing earlier history with it is 2j's history bundles.
-- **Leave** (`quill session leave ID`): with two writers, one leaving ends
+- **Leave** (`plait session leave ID`): with two writers, one leaving ends
   the session. The server marks it ended and accepts nothing more for its
   log; both sides can still read what's there, and their devices drop the
   group's keys once they've read to the end. Deleting either persona (or
@@ -632,12 +632,12 @@ and the server learns when it may let go of ciphertext.
 - **`authorSeq` counts per sending device**, not per writer: a writer's
   devices send independently and can't share a counter without talking
   first. A gap in a device's counter (between the first and last values
-  seen) means the server held messages back; `quill session read` says so.
+  seen) means the server held messages back; `plait session read` says so.
 - **Edits and deletions keep every version.** An `Update` replaces a note's
   text and a `Delete` hides it, both as new encrypted activities appended to
   the log; the original stays. Only the original author's (the same
   persona's) `Update` or `Delete` counts. Reading shows each message's
-  latest text, marked edited, or "deleted by author"; `quill session
+  latest text, marked edited, or "deleted by author"; `plait session
   history` shows every version. The server can't tell an edit from a new
   message.
 - **Padding.** Application messages are padded to a multiple of 256 bytes
@@ -647,7 +647,7 @@ and the server learns when it may let go of ciphertext.
   was logged (group and position), a request is waiting on a prompt, a
   session began or ended, and a device's KeyPackage pool ran low. Notices
   carry no content; clients fetch and decrypt as before.
-  `quill session read ID --follow` stays open and prints new messages as
+  `plait session read ID --follow` stays open and prints new messages as
   they arrive.
 - **Acknowledgements and retention.** Each device tells the server how far
   it has read a session's log (`POST /sessions/{id}/ack`). These go only to
@@ -681,21 +681,21 @@ writers can see, name, and move between. Nothing changes on the server.
   A device refuses to send to a name that breaks them; one received from
   the other writer's client is filed under `story`, with the note kept as
   sent.
-- **Naming a channel** (`quill session channel add ID NAME [--about
+- **Naming a channel** (`plait session channel add ID NAME [--about
   TEXT]`): an encrypted `Create` of a `wr:Channel` object, so the channel
   shows for both writers before anything is written in it. `--about`
   again replaces the description (an `Update`), keeping earlier versions
   as for notes. Either writer can describe any channel. Channels are never
   deleted, since nothing in a session is lost; writing in one names it
   too.
-- **Replies across channels** (`quill session write ID --reply-to N`): a
+- **Replies across channels** (`plait session write ID --reply-to N`): a
   note can carry `inReplyTo`, the id of another note in any channel ("see
   the planning note"). Reading shows what a note answers and where it is;
   a reply to a note this device never received says so.
-- **Each channel in its own order:** `quill session read ID --channel
+- **Each channel in its own order:** `plait session read ID --channel
   NAME` shows one channel by its clock order, as 2g does for the whole
   session.
-- **The channel list** (`quill session channels ID`): every channel with
+- **The channel list** (`plait session channels ID`): every channel with
   its description, how many notes it has, and how many this device hasn't
   shown yet. That count is kept only on the device: no read status ever
   reaches the other writer or the server.
@@ -743,22 +743,22 @@ messages can carry attachments that a later client can show.
   - Rate: 30 messages per minute per login.
   - Clients refuse to fetch or decrypt more than the server's advertised
     attachment limit.
-- **CLI:** `quill session write ID --attach FILE` (repeatable); `read`
-  lists each message's attachments; `quill session save ID N --to DIR`
+- **CLI:** `plait session write ID --attach FILE` (repeatable); `read`
+  lists each message's attachments; `plait session save ID N --to DIR`
   writes them out.
 - **An administrators' switch** (added 2026-10-23 at the user's request):
   attachments in sessions can be turned off, as a live server setting
-  (starting value `QUILL_ATTACHMENTS`), in Server settings → Sessions or
-  `quill admin settings --attachments off`. Uploads are then refused and the
+  (starting value `PLAIT_ATTACHMENTS`), in Server settings → Sessions or
+  `plait admin settings --attachments off`. Uploads are then refused and the
   instance info says so, so clients refuse before encrypting anything.
   Together with the size limits it tells writers what the server is for.
   It can't stop a determined client from packing small files into
   messages, but the server can tell uploads apart, so it holds for blobs.
 - **Storage views** (added 2026-10-23): a login sees what its sessions take
-  (`GET /account/storage`, `quill storage`): in total, per session
+  (`GET /account/storage`, `plait storage`): in total, per session
   (messages, attachments, and the part it uploaded against its quota), and
   its device-sync log. Administrators see every login's totals
-  (`GET /admin/storage`, `quill admin storage`, and the Sessions tab), and
+  (`GET /admin/storage`, `plait admin storage`, and the Sessions tab), and
   one login's sessions without persona handles, so the view doesn't link
   personas to logins. Sizes and counts of ciphertext only.
 
@@ -781,7 +781,7 @@ format through the `age` crate, behind a small interface so our own
 implementation of the format could replace the crate later without the
 rest of the code changing.
 
-- **Safety numbers** (`quill session verify ID`), plan: defending against
+- **Safety numbers** (`plait session verify ID`), plan: defending against
   key substitution.
   - The **identity number**: 12 words from both personas' identity keys
     (each with its actor URI, in a fixed order). It changes only if either
@@ -794,8 +794,8 @@ rest of the code changing.
     member and no man in the middle.
   - `--confirm` marks the other writer verified on this device, tied to
     their identity key: if the key changes, the mark goes and the TOFU
-    warning shows. `quill sessions` shows who's verified.
-- **Backup** (`quill backup create`, plan: recovery when no device is
+    warning shows. `plait sessions` shows who's verified.
+- **Backup** (`plait backup create`, plan: recovery when no device is
   left). The client makes a recovery code (128 random bits, shown once as
   12 BIP-39 words with a checksum) and uploads an encrypted backup:
   - **Contents:** every persona's identity key, the trust pins and
@@ -804,14 +804,14 @@ rest of the code changing.
     state: a restored device joins as a new device.
   - **Format:** an `age` file with the scrypt passphrase recipient, the
     recovery words as the passphrase, so a backup can be opened with the
-    standard `age` tools even without Quill. Inside, JSON (the draft said
+    standard `age` tools even without Plait. Inside, JSON (the draft said
     CBOR; JSON is what everything else uses).
   - **Storage:** `PUT /backup/{part}` in parts of up to 8 MiB, replacing
     the previous backup as a whole; `GET /backup`, `DELETE /backup`. Up to
     256 MiB per login, counted apart from the attachment quota. The device
-    keeps the code in its encrypted store, so `quill backup create` again
+    keeps the code in its encrypted store, so `plait backup create` again
     refreshes the backup without a new code (`--new-code` makes one).
-- **Restore** (`quill backup restore`, on a new device signed in to the
+- **Restore** (`plait backup restore`, on a new device signed in to the
   login): enter the 12 words; the device takes the identity keys, pins and
   history, makes its own device key for each persona and publishes it. It
   assumes every other device is gone: it revokes the personas' other
@@ -875,12 +875,12 @@ devices instead of from the server.
     bundle's blobs, which only it needed.
   - Sessions that ended before a device was linked are listed too; the
     device asks for their whole history the same way.
-  - `quill sessions` shows a session whose history is still incomplete.
+  - `plait sessions` shows a session whose history is still incomplete.
 - **Deleting by age** (plan: retention). The server deletes every
   session's and the device group's ciphertext once it's older than the
   retention period (published as `retentionDays`, 30 days by default,
-  `QUILL_RETENTION_DAYS`), and with it the blobs it carried, whatever the
-  acknowledgements say. `QUILL_RETENTION_DAYS=-1` turns this off: messages
+  `PLAIT_RETENTION_DAYS`), and with it the blobs it carried, whatever the
+  acknowledgements say. `PLAIT_RETENTION_DAYS=-1` turns this off: messages
   then stay until every device has read them, however old, and
   `retentionDays` is published as `null`. Deleting once every device has acknowledged, after
   the 7-day grace, carries on as before. A sweep runs hourly.
@@ -899,14 +899,14 @@ devices instead of from the server.
     lists them with the session. A device the server has left a Welcome
     for counts as having read up to it.
   - **In the device group**, the device must be linked again
-    (`quill device link`), with a new account device key; its persona
-    keys and sessions stay. `quill device remove` of its old entry
+    (`plait device link`), with a new account device key; its persona
+    keys and sessions stay. `plait device remove` of its old entry
     doesn't revoke persona devices another device still uses.
 
 As built: a request nobody answers is sent again after 7 days and dropped
 after 30; a device that fell behind waits a day for the persona's other
 devices before asking the other writer (at once when it has none). While a
-device's history is incomplete, `quill session read` says so instead of
+device's history is incomplete, `plait session read` says so instead of
 warning about gaps. An edit read live for a note the device doesn't have
 yet is dropped; the bundle brings the note with its versions as the
 answering device holds them. The server counts a device that never
@@ -916,7 +916,7 @@ fell behind.
 Not in 2k: answering history requests from the other writer's devices
 (they ask only their own), deleting by age in a client's own history, and
 removing the device-group entry of a device that never comes back
-(`quill device remove` does it by hand).
+(`plait device remove` does it by hand).
 
 Done when: a device added to a session after many messages, edits and
 files, and a device linked after a session ended, both end up holding the
@@ -1007,7 +1007,7 @@ CI against the code, so it can't drift.
     whether or not the login exists, and a requester can't tell a held,
     pending, declined or expired request apart.
   - A test regenerates the file and fails if it differs from the one
-    committed (`QUILL_WRITE_OPENAPI=1` rewrites it), so every API change
+    committed (`PLAIT_WRITE_OPENAPI=1` rewrites it), so every API change
     shows up in review. An end-to-end test checks real responses from a
     running server against the file's schemas.
   - Fuzzing a server from the file (e.g. with Schemathesis) is part of 6b.
@@ -1077,7 +1077,7 @@ unchanged in content.
 
 ## Phase 3: Desktop GUI
 
-Epic: [#36](https://github.com/thecsapprentice/quill/issues/36). Each step is a sub-issue of it, with its scope and "done when"; this table stays the summary.
+Epic: [#36](https://github.com/thecsapprentice/plait/issues/36). Each step is a sub-issue of it, with its scope and "done when"; this table stays the summary.
 
 `plait-gui`, on Dioxus desktop ([plan](plan.md#future-clients-gui-framework-options)):
 the app logic, `plait-core` included, runs as native Rust and only DOM
@@ -1132,19 +1132,19 @@ part of its "done when".
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | 3a | Spike: the session view (channels, the long-form editor with Markdown live preview, an image attachment) in Dioxus on desktop and in the browser, at narrow and wide window sizes; IME, spellcheck and screen readers; confirm Dioxus or fall back to Leptos + Tauri 2 | done (#23) |
-| 3b | [#25](https://github.com/thecsapprentice/quill/issues/25) `plait-ui` and the `plait-gui` shell: first run (sign up or in, a persona, keys made and published without being asked), unlocking the store, personas, settings, advanced mode, the server rules | done (#63) |
-| 3c | [#26](https://github.com/thecsapprentice/quill/issues/26) The board in the GUI: browse, search, post and edit prompts, through the board's shared components | done (#67) |
-| 3d | [#27](https://github.com/thecsapprentice/quill/issues/27) Keys and devices: identity keys, linking by QR code or words, the device list, revoking, safety numbers | done (#68, #78) |
-| 3e | [#28](https://github.com/thecsapprentice/quill/issues/28) Requests: sending with a pitch, the inbox, accepting and declining, status, the changed-key stop, and comparing words before a session ([#72](https://github.com/thecsapprentice/quill/issues/72)) | done (#73, #78) |
-| 3f | [#29](https://github.com/thecsapprentice/quill/issues/29) Sessions: the session list, reading and writing, channels, replies, edits and deletions with their history, live updates | planned |
-| 3g | [#30](https://github.com/thecsapprentice/quill/issues/30) Attachments: attaching, opening and saving files; images shown inline, with metadata stripped before sending (deferred from 2i); storage use | planned |
-| 3h | [#31](https://github.com/thecsapprentice/quill/issues/31) Backup and recovery, history sync and rejoining, notices; anything the CLI does that the GUI doesn't yet | planned |
-| 3i | [#32](https://github.com/thecsapprentice/quill/issues/32) Packaging for Windows, macOS and Linux | planned |
+| 3b | [#25](https://github.com/thecsapprentice/plait/issues/25) `plait-ui` and the `plait-gui` shell: first run (sign up or in, a persona, keys made and published without being asked), unlocking the store, personas, settings, advanced mode, the server rules | done (#63) |
+| 3c | [#26](https://github.com/thecsapprentice/plait/issues/26) The board in the GUI: browse, search, post and edit prompts, through the board's shared components | done (#67) |
+| 3d | [#27](https://github.com/thecsapprentice/plait/issues/27) Keys and devices: identity keys, linking by QR code or words, the device list, revoking, safety numbers | done (#68, #78) |
+| 3e | [#28](https://github.com/thecsapprentice/plait/issues/28) Requests: sending with a pitch, the inbox, accepting and declining, status, the changed-key stop, and comparing words before a session ([#72](https://github.com/thecsapprentice/plait/issues/72)) | done (#73, #78) |
+| 3f | [#29](https://github.com/thecsapprentice/plait/issues/29) Sessions: the session list, reading and writing, channels, replies, edits and deletions with their history, live updates | planned |
+| 3g | [#30](https://github.com/thecsapprentice/plait/issues/30) Attachments: attaching, opening and saving files; images shown inline, with metadata stripped before sending (deferred from 2i); storage use | planned |
+| 3h | [#31](https://github.com/thecsapprentice/plait/issues/31) Backup and recovery, history sync and rejoining, notices; anything the CLI does that the GUI doesn't yet | planned |
+| 3i | [#32](https://github.com/thecsapprentice/plait/issues/32) Packaging for Windows, macOS and Linux | planned |
 
 Every GUI screen follows one design language:
-`docs/design/gui-design-language.md` ([#69](https://github.com/thecsapprentice/quill/issues/69)),
+`docs/design/gui-design-language.md` ([#69](https://github.com/thecsapprentice/plait/issues/69)),
 with a reference page in the app under advanced mode. Bringing the screens
-built so far up to it is [#70](https://github.com/thecsapprentice/quill/issues/70);
+built so far up to it is [#70](https://github.com/thecsapprentice/plait/issues/70);
 screens from 3e on are built to it from the start.
 
 Gate: the GUI does everything the CLI does, and the end-to-end tests that
@@ -1241,7 +1241,7 @@ As built (`docs/plan.md`, "Text input in the webview", has the details):
 
 ## Phase 4: Web client
 
-`quill-web`: Rust compiled to WebAssembly, on its own origin, sharing
+`plait-web`: Rust compiled to WebAssembly, on its own origin, sharing
 `plait-core` and `plait-ui` with the desktop GUI. It must adopt every
 mitigation in the plan's
 [web client security requirements](plan.md#web-client-security-requirements-for-the-separate-proposal).
@@ -1251,7 +1251,7 @@ A first cut.
 | --- | --- | --- |
 | 4a | The web client proposal: how each security requirement is met, the threat model's web-specific risks, and what the server serves | planned |
 | 4b | `plait-core` on WebAssembly: the store over IndexedDB wrapped by a non-extractable WebCrypto key, HTTP through `fetch`, the RustCrypto provider, the browser's randomness; the test vectors run on WebAssembly in CI (deferred from 2m) | planned |
-| 4c | `quill-web` on its own origin: the shared views, strict CSP with Trusted Types, decrypted content in a sandboxed frame | planned |
+| 4c | `plait-web` on its own origin: the shared views, strict CSP with Trusted Types, decrypted content in a sandboxed frame | planned |
 | 4d | Web devices: linking as a limited device by default, onboarding to a backup or a second device, persistent storage, warnings about clearing site data | planned |
 | 4e | Verifiable code: reproducible builds, a signed release manifest, Subresource Integrity, a pinned version through a service worker, loading the bundle from any origin | planned |
 
@@ -1302,7 +1302,7 @@ ranges. Known so far:
     (20), message retention grace period (7 days), low-pool notice
     threshold (10), live notice buffer (1024).
   - Retention (2k): the sweep's interval (1 hour). The retention period
-    itself is `QUILL_RETENTION_DAYS` already.
+    itself is `PLAIT_RETENTION_DAYS` already.
   - Attachments: size limit (10 MiB), smallest bucket (4 KiB), quota per
     login (500 MiB), blobs per message (10), unattached-blob lifetime (1
     day), messages per minute (30). These are in the config's limits but

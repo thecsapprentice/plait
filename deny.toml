@@ -31,12 +31,12 @@ ignore = [
   # crypto-bigint 0.5: timing variability in operations meant to be
   # constant-time. Used only by the NIST curves (p256, p384, k256) that
   # OpenMLS's RustCrypto provider and hpke-rs carry for other ciphersuites.
-  # Quill uses only MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519 (X25519 and
+  # Plait uses only MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519 (X25519 and
   # Ed25519 through the dalek crates, which don't use crypto-bigint), and
   # its KeyPackages advertise no other suite, so no peer can choose one.
   # Client-only. The fix (0.7.6) needs elliptic-curve 0.14, which
   # openmls_rust_crypto 0.6 doesn't use yet; remove when it does.
-  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint, used only by NIST curves Quill's one ciphersuite never uses; client-only" },
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint, used only by NIST curves Plait's one ciphersuite never uses; client-only" },
   # The desktop GUI's stack (3b): Dioxus desktop, wry and tao, and on Linux
   # the gtk-rs 0.18 bindings they're built on. Client-only (plait-gui);
   # check-server-deps.sh keeps all of it out of the server. Remove each when
@@ -48,7 +48,7 @@ ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; build-time proc macro in image's codecs; desktop GUI only" },
   # proc-macro-error: unmaintained, build time only (gtk-rs 0.18's macros).
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build-time, gtk-rs 0.18 macros; desktop GUI on Linux" },
-  # glib 0.18: VariantStrIter's iterators are unsound; neither Quill nor
+  # glib 0.18: VariantStrIter's iterators are unsound; neither Plait nor
   # wry or tao use GVariant string arrays. Fixed in glib 0.20, which tao's
   # GTK backend hasn't moved to.
   { id = "RUSTSEC-2024-0429", reason = "glib 0.18 VariantStrIter, unused; desktop GUI on Linux" },

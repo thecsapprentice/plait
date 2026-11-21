@@ -341,7 +341,7 @@ pub fn prompt_page(chrome: &Chrome, view: PromptView) -> String {
                 }
             }
             p { class: "aside",
-                "Writing sessions happen in a Quill app, which isn't released yet. To share this prompt, copy its address."
+                "Writing sessions happen in a Plait app, which isn't released yet. To share this prompt, copy its address."
             }
             if view.is_author {
                 details {

@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 use super::StoreError;
 
 /// Service name the store's keys are filed under.
-const SERVICE: &str = "quill-store";
+const SERVICE: &str = "plait-store";
 
 /// A place to keep small secrets by name.
 pub trait Vault: Send + Sync {

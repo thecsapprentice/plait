@@ -65,7 +65,7 @@ pub enum CoreError {
     /// Nothing goes to them, or is read from them, until the new key is
     /// checked and accepted (`keys::accept_pin`).
     #[error(
-        "@{handle}'s identity key changed since it was pinned; check it with `quill keys show {handle}`"
+        "@{handle}'s identity key changed since it was pinned; check it with `plait keys show {handle}`"
     )]
     KeyChanged { handle: String },
 }
@@ -164,7 +164,7 @@ impl Client {
             base.set_path(&format!("{}/", base.path()));
         }
         let http = reqwest::Client::builder()
-            .user_agent(concat!("quill/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("plait/", env!("CARGO_PKG_VERSION")))
             .redirect(reqwest::redirect::Policy::none())
             .build()?;
         Ok(Self {
@@ -1281,10 +1281,10 @@ mod tests {
             c.url("/personas").unwrap().as_str(),
             "https://writers.example/api/v1/personas"
         );
-        let sub = Client::new("https://host.example/quill").unwrap();
+        let sub = Client::new("https://host.example/plait").unwrap();
         assert_eq!(
             sub.url("/instance").unwrap().as_str(),
-            "https://host.example/quill/api/v1/instance"
+            "https://host.example/plait/api/v1/instance"
         );
     }
 

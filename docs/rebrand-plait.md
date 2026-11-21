@@ -206,6 +206,9 @@ list below plus `test-vectors/*.json`.
   BIP-39 list.
 - The reserved-handle defaults keep **quill** alongside the new **plait**,
   so nobody can pass for the old name either.
+- Things that are about the old name: the docs index's link to this
+  guide ("Rebranding Quill as Plait") and the comment in migration
+  `0030_reserved_plait.sql`.
 
 ### The steps
 

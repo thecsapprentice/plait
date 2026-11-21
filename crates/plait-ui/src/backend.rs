@@ -38,7 +38,7 @@ pub enum Problem {
     SignedOut,
     /// This computer has no keychain to keep a store's key in: the writer
     /// must choose a passphrase (adding a server) or type it (opening one).
-    #[error("This computer has no keychain for Quill's key; use a passphrase.")]
+    #[error("This computer has no keychain for Plait's key; use a passphrase.")]
     NeedsPassphrase,
     /// The name asked for (a login or a handle) isn't available.
     #[error("That name isn't available.")]
@@ -231,7 +231,7 @@ pub struct Details {
 /// A link this computer opened, waiting for a device already in use.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkStart {
-    /// The whole `quill-link:` code, for the QR code and for copying.
+    /// The whole `plait-link:` code, for the QR code and for copying.
     pub code: String,
     /// The six words to type on the device in use.
     pub words: Vec<String>,

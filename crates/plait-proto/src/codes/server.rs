@@ -1,8 +1,8 @@
 //! Codes the server sets on its refusals (01–49 of each area), and the
-//! input checks shared with clients (Q-90xx).
+//! input checks shared with clients (P-90xx).
 
 registry! {
-    // ---- Q-10xx: connection and the server -----------------------------
+    // ---- P-10xx: connection and the server -----------------------------
     /// What was asked for isn't there, or isn't shown to this login.
     NOT_FOUND = 1001,
     /// The request was larger than the server takes.
@@ -23,7 +23,7 @@ registry! {
     /// The marker for the next page of a list isn't one the server gave out.
     BAD_CURSOR = 1009,
 
-    // ---- Q-11xx: sign-in and logins ------------------------------------
+    // ---- P-11xx: sign-in and logins ------------------------------------
     /// No login token, or one the server no longer accepts: sign in again.
     SIGNED_OUT = 1101,
     /// That login name and password don't match.
@@ -33,7 +33,7 @@ registry! {
     /// That login name is already taken.
     LOGIN_NAME_TAKEN = 1104,
 
-    // ---- Q-12xx: server rules ------------------------------------------
+    // ---- P-12xx: server rules ------------------------------------------
     /// The server rules have changed; read and accept them to keep writing.
     RULES_NOT_ACCEPTED = 1201,
     /// The rules changed after they were read; read them again to accept.
@@ -43,7 +43,7 @@ registry! {
     /// This server asks new accounts to accept its rules first.
     RULES_REQUIRED_AT_SIGNUP = 1204,
 
-    // ---- Q-14xx: personas and handles ----------------------------------
+    // ---- P-14xx: personas and handles ----------------------------------
     /// That persona isn't one of this login's.
     PERSONA_UNKNOWN = 1401,
     /// This login has as many personas as the server allows.
@@ -64,7 +64,7 @@ registry! {
     /// Set a staff name in your settings before speaking as staff.
     STAFF_NAME_UNSET = 1409,
 
-    // ---- Q-15xx: identity keys, pins and KeyPackages -------------------
+    // ---- P-15xx: identity keys, pins and KeyPackages -------------------
     /// A key, certificate or other key data wasn't written as base64url.
     KEYS_NOT_BASE64 = 1501,
     /// An identity key, device certificate or revocation didn't check out.
@@ -84,7 +84,7 @@ registry! {
     /// A device already has as many KeyPackages waiting as it may.
     KEYPACKAGE_POOL_FULL = 1509,
 
-    // ---- Q-16xx: devices and linking -----------------------------------
+    // ---- P-16xx: devices and linking -----------------------------------
     /// That device key is already registered.
     DEVICE_KEY_REGISTERED = 1601,
     /// That device key was revoked, and revocation is permanent: make a new
@@ -107,11 +107,11 @@ registry! {
     /// This login already has a personal device group.
     DEVICE_GROUP_EXISTS = 1610,
 
-    // ---- Q-20xx: prompts -----------------------------------------------
+    // ---- P-20xx: prompts -----------------------------------------------
     /// An administrator removed this prompt, so it can't be changed.
     PROMPT_REMOVED = 2001,
 
-    // ---- Q-21xx: tags and tag types ------------------------------------
+    // ---- P-21xx: tags and tag types ------------------------------------
     /// There's no tag type by that name.
     TAG_TYPE_UNKNOWN = 2101,
     /// A tag type by that name already exists.
@@ -136,7 +136,7 @@ registry! {
     /// A prompt has too few or too many tags of some type.
     TAGS_WRONG_COUNT = 2111,
 
-    // ---- Q-22xx: reports, notices and automated moderation -------------
+    // ---- P-22xx: reports, notices and automated moderation -------------
     /// A moderation script refused what was written; the message says why.
     CONTENT_REJECTED = 2201,
     /// Reports can be listed as open or all, nothing else.
@@ -179,7 +179,7 @@ registry! {
     /// A moderation chain names a script that doesn't exist.
     AUTOMOD_CHAIN_UNKNOWN_SCRIPT = 2220,
 
-    // ---- Q-23xx: announcements and comments ----------------------------
+    // ---- P-23xx: announcements and comments ----------------------------
     /// Comments are closed on this announcement.
     COMMENTS_CLOSED = 2301,
     /// A comment speaks as a persona or as staff, not both.
@@ -189,13 +189,13 @@ registry! {
     /// That comment has already been removed.
     COMMENT_ALREADY_REMOVED = 2304,
 
-    // ---- Q-24xx: administration and server settings --------------------
+    // ---- P-24xx: administration and server settings --------------------
     /// Only the server's administrators can do that.
     ADMIN_ONLY = 2401,
     /// The server's limits must be whole numbers.
     SETTINGS_LIMITS_NOT_NUMBERS = 2402,
 
-    // ---- Q-30xx: requests ----------------------------------------------
+    // ---- P-30xx: requests ----------------------------------------------
     /// Some part of a request wasn't written as base64url.
     REQUEST_NOT_BASE64 = 3001,
     /// A request's opening message (its pitch) couldn't be read.
@@ -215,7 +215,7 @@ registry! {
     /// Requests can be listed as pending or held, nothing else.
     REQUEST_BAD_STATE = 3009,
 
-    // ---- Q-31xx: sessions and groups -----------------------------------
+    // ---- P-31xx: sessions and groups -----------------------------------
     /// A session id or other group data wasn't written as base64url.
     GROUP_NOT_BASE64 = 3101,
     /// What was sent as a welcome to a group isn't one.
@@ -230,7 +230,7 @@ registry! {
     /// A device's request to rejoin a session didn't check out.
     SESSION_REJOIN_REFUSED = 3106,
 
-    // ---- Q-32xx: messages and channels ---------------------------------
+    // ---- P-32xx: messages and channels ---------------------------------
     /// A message couldn't be read as one the server takes.
     MESSAGE_UNREADABLE = 3201,
     /// A message was sent to a different group than it was written for.
@@ -241,7 +241,7 @@ registry! {
     /// A message has more attachments than the server allows.
     MESSAGE_TOO_MANY_ATTACHMENTS = 3204,
 
-    // ---- Q-33xx: attachments and storage -------------------------------
+    // ---- P-33xx: attachments and storage -------------------------------
     /// This server doesn't take attachments.
     ATTACHMENTS_OFF = 3301,
     /// Your attachment storage is full; it frees up as messages are read.
@@ -251,7 +251,7 @@ registry! {
     /// A message names attachments that aren't the sender's to attach there.
     ATTACHMENT_NOT_YOURS = 3304,
 
-    // ---- Q-34xx: backup and recovery -----------------------------------
+    // ---- P-34xx: backup and recovery -----------------------------------
     /// A backup is larger than this server keeps.
     BACKUP_TOO_LARGE = 3401,
     /// A part of a backup was empty.
@@ -259,7 +259,7 @@ registry! {
     /// Some parts of the backup never arrived.
     BACKUP_INCOMPLETE = 3403,
 
-    // ---- Q-35xx: history and sync --------------------------------------
+    // ---- P-35xx: history and sync --------------------------------------
     /// A device marked a place as read that isn't in the session's log.
     SYNC_ACK_OUT_OF_RANGE = 3501,
     /// A device can only mark what it has read for its own persona's
@@ -269,7 +269,7 @@ registry! {
     /// it from where it is.
     SYNC_PRUNED = 3503,
 
-    // ---- Q-90xx: input checks shared by every area ---------------------
+    // ---- P-90xx: input checks shared by every area ---------------------
     /// A login name must be 3 to 30 characters of a to z, 0 to 9 and _.
     BAD_LOGIN_NAME = 9001,
     /// A password is too short or too long.

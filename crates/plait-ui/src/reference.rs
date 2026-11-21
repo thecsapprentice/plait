@@ -58,7 +58,7 @@ pub fn ReferencePage() -> Element {
 fn Theme(theme: &'static str, name: &'static str) -> Element {
     let id = |what: &str| format!("ref-{theme}-{what}");
     rsx! {
-        section { class: "quill ref-theme", "data-theme": theme, aria_label: "{name}",
+        section { class: "plait ref-theme", "data-theme": theme, aria_label: "{name}",
             h2 { "{name}" }
 
             h3 { "Colour" }

@@ -2,7 +2,7 @@
 //! answer, or this computer refused or couldn't do something.
 
 registry! {
-    // ---- Q-10xx: connection and the server -----------------------------
+    // ---- P-10xx: connection and the server -----------------------------
     /// The server couldn't be reached: offline, or the address is wrong.
     UNREACHABLE = 1050,
     /// The server's reply couldn't be read.
@@ -18,20 +18,20 @@ registry! {
     /// A server's name in this app must be 1 to 60 characters.
     SERVER_NAME_BAD = 1056,
 
-    // ---- Q-11xx: sign-in and logins ------------------------------------
+    // ---- P-11xx: sign-in and logins ------------------------------------
     /// This computer has no login token for the server: sign in.
     NOT_SIGNED_IN = 1150,
 
-    // ---- Q-13xx: this computer's store and keychain ----------------------
+    // ---- P-13xx: this computer's store and keychain ----------------------
     /// The store file couldn't be read or written.
     STORE_IO = 1350,
     /// A store already exists where a new one was to be made.
     STORE_EXISTS = 1351,
-    /// The store is open in another copy of Quill.
+    /// The store is open in another copy of Plait.
     STORE_IN_USE = 1352,
-    /// That file isn't a Quill store.
+    /// That file isn't a Plait store.
     NOT_A_STORE = 1353,
-    /// The store was made by a newer Quill: update this one.
+    /// The store was made by a newer Plait: update this one.
     STORE_TOO_NEW = 1354,
     /// The store is damaged.
     STORE_DAMAGED = 1355,
@@ -45,7 +45,7 @@ registry! {
     KEYCHAIN_FAILED = 1359,
     /// The store's database failed.
     STORE_DATABASE = 1360,
-    /// This computer has no keychain for Quill's key: choose a passphrase.
+    /// This computer has no keychain for Plait's key: choose a passphrase.
     NO_KEYCHAIN = 1361,
     /// The stores couldn't be moved to that folder.
     STORES_NOT_MOVED = 1362,
@@ -54,11 +54,11 @@ registry! {
     /// The store is busy with something else; try again in a moment.
     STORE_BUSY = 1364,
 
-    // ---- Q-14xx: personas and handles --------------------------------------
+    // ---- P-14xx: personas and handles --------------------------------------
     /// That persona is gone: deleted, perhaps from another device.
     PERSONA_GONE = 1450,
 
-    // ---- Q-15xx: identity keys, pins and KeyPackages --------------------------
+    // ---- P-15xx: identity keys, pins and KeyPackages --------------------------
     /// A key check failed: something published doesn't verify.
     KEYS_CHECK_FAILED = 1550,
     /// Another writer's identity key changed since this computer pinned it.
@@ -76,7 +76,7 @@ registry! {
     /// The persona's identity key was made on another device: link this one.
     KEYS_ELSEWHERE = 1557,
 
-    // ---- Q-16xx: devices and linking -----------------------------------------
+    // ---- P-16xx: devices and linking -----------------------------------------
     /// A check on the login's devices failed.
     DEVICES_CHECK_FAILED = 1650,
     /// The link expired before it was approved.
@@ -94,7 +94,7 @@ registry! {
     /// A device's name must be 1 to 40 characters on one line.
     DEVICE_NAME_BAD = 1656,
 
-    // ---- Q-30xx: requests ---------------------------------------------------
+    // ---- P-30xx: requests ---------------------------------------------------
     /// A request failed a check on this computer.
     REQUEST_CHECK_FAILED = 3050,
     /// The pitch is empty.
@@ -112,7 +112,7 @@ registry! {
     /// The request failed its checks (a forged group or pitch): never shown.
     REQUEST_REFUSED = 3057,
 
-    // ---- Q-31xx, Q-33xx to Q-35xx: sessions, attachments, backup, history ------
+    // ---- P-31xx, P-33xx to P-35xx: sessions, attachments, backup, history ------
     /// A session failed a check on this computer.
     SESSION_CHECK_FAILED = 3150,
     /// An attachment failed a check on this computer.
@@ -128,11 +128,11 @@ registry! {
     /// History sync between devices failed a check.
     HISTORY_SYNC_FAILED = 3551,
 
-    // ---- Q-90xx: input checks shared by every area -------------------------
+    // ---- P-90xx: input checks shared by every area -------------------------
     /// The command was given something it can't use; its message says what.
     CLI_USAGE = 9050,
 
-    // ---- Q-99xx: not yet given a code of its own -------------------------
+    // ---- P-99xx: not yet given a code of its own -------------------------
     /// Something went wrong that has no code of its own yet. Advanced mode
     /// shows the detail; report it with that.
     UNCLASSIFIED = 9950,

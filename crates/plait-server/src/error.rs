@@ -112,7 +112,7 @@ impl IntoResponse for ApiError {
         }
         let status = self.status();
         let problem = Problem {
-            kind: format!("https://quill.example/problems/{}", self.slug()),
+            kind: format!("https://plait.example/problems/{}", self.slug()),
             title: status.canonical_reason().unwrap_or("error").to_owned(),
             status: status.as_u16(),
             detail: match &self {

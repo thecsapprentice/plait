@@ -1,4 +1,4 @@
-//! A simulated Quill server and client store behind the `Backend` trait,
+//! A simulated Plait server and client store behind the `Backend` trait,
 //! for interaction tests. It keeps state like the real thing (logins,
 //! personas, keys on this computer, rules and their versions, locked
 //! stores) and a test can change it mid-flow, as an administrator or a
@@ -399,7 +399,7 @@ impl Backend for Sim {
                 registration_open: server.registration_open,
                 has_rules: server.rules.is_some(),
                 rules_to_accept: server.rules.is_some() && server.acceptance != Acceptance::Never,
-                software: "quill".into(),
+                software: "plait".into(),
                 version: "0.0.0-sim".into(),
             })
         })();
@@ -1145,7 +1145,7 @@ impl Backend for Sim {
         let rows = match self.open_store() {
             Ok((id, store, _)) => vec![
                 ("Server id (this app's)".to_owned(), id.to_string()),
-                ("Store".to_owned(), format!("/stores/{id}.quill")),
+                ("Store".to_owned(), format!("/stores/{id}.plait")),
                 (
                     "Store key".to_owned(),
                     if store.passphrase.is_some() {

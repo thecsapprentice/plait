@@ -650,7 +650,7 @@ mod tests {
             if found.len() > 0 { return reject("found " + found[0]); }
             if text::matches(`\d{7,}`, post.body) { return reject("phone"); }
             for link in text::links(post.body) {
-                if link.host != "quill.example" { return reject("link"); }
+                if link.host != "plait.example" { return reject("link"); }
             }
         "#;
         assert_eq!(
@@ -672,7 +672,7 @@ mod tests {
             }
         );
         assert_eq!(
-            run(source, "t", "see quill.example/rules").unwrap(),
+            run(source, "t", "see plait.example/rules").unwrap(),
             Outcome::Pass
         );
     }
@@ -754,7 +754,7 @@ mod tests {
                 3,
                 "# refused\nspam\nfree crypto".to_owned(),
             ),
-            ("allowed_sites".to_owned(), 1, "quill.example".to_owned()),
+            ("allowed_sites".to_owned(), 1, "plait.example".to_owned()),
         ]);
         let script = compile(
             r#"
@@ -764,7 +764,7 @@ mod tests {
             let n = 0; for w in blocked { n += 1; }
             if n != 2 { return reject("loop"); }
             if text::find_words(blocked, post.body).len() > 0 { return reject("found"); }
-            if common::text("allowed_sites") != "quill.example" { return reject("text"); }
+            if common::text("allowed_sites") != "plait.example" { return reject("text"); }
             "#,
         )
         .unwrap();

@@ -1,4 +1,4 @@
-//! `quill request`: collaboration requests, both sides.
+//! `plait request`: collaboration requests, both sides.
 
 use std::path::PathBuf;
 

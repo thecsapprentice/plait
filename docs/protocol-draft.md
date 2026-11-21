@@ -6,9 +6,9 @@ The project's protocol is three layers: standard ActivityPub and Activity Stream
 
 ## 1. Conventions
 
-- **Namespace.** `wr:` = `https://quill.example/ns/wr#` (placeholder until the project domain is chosen). JSON-LD context at `https://quill.example/ns/wr`, with immutable versioned aliases `/ns/wr/1.0.0`, `/ns/wr/1.0` and `/ns/wr/1`, mirroring the SWICG `mls:` versioning scheme.
+- **Namespace.** `wr:` = `https://plait.example/ns/wr#` (placeholder until the project domain is chosen). JSON-LD context at `https://plait.example/ns/wr`, with immutable versioned aliases `/ns/wr/1.0.0`, `/ns/wr/1.0` and `/ns/wr/1`, mirroring the SWICG `mls:` versioning scheme.
 
-- **Contexts used together.** Every federated object carries `["https://www.w3.org/ns/activitystreams", "https://purl.archive.org/socialweb/mls/1.0", "https://w3id.org/security/multikey/v1", "https://quill.example/ns/wr/1.0"]`.
+- **Contexts used together.** Every federated object carries `["https://www.w3.org/ns/activitystreams", "https://purl.archive.org/socialweb/mls/1.0", "https://w3id.org/security/multikey/v1", "https://plait.example/ns/wr/1.0"]`.
 
 - **JSON-LD handling.** Servers and clients treat documents as plain JSON with these known contexts and compact term names; no JSON-LD expansion of untrusted input. Unknown terms are ignored, never rejected.
 
@@ -28,7 +28,7 @@ An actor carries two kinds of keys that must never be confused: the **server-hel
 
 ```json
 {
-  "@context": ["https://www.w3.org/ns/activitystreams", "https://purl.archive.org/socialweb/mls/1.0", "https://w3id.org/security/multikey/v1", "https://quill.example/ns/wr/1.0"],
+  "@context": ["https://www.w3.org/ns/activitystreams", "https://purl.archive.org/socialweb/mls/1.0", "https://w3id.org/security/multikey/v1", "https://plait.example/ns/wr/1.0"],
   "type": "Person",
   "id": "https://alpha.example/users/inkfox",
   "preferredUsername": "inkfox",
@@ -81,7 +81,7 @@ An actor carries two kinds of keys that must never be confused: the **server-hel
 
 ### Server limits
 
-Published in NodeInfo `metadata.quill` and at `GET /api/v1/instance`:
+Published in NodeInfo `metadata.plait` and at `GET /api/v1/instance`:
 
 ```json
 {
@@ -102,7 +102,7 @@ A prompt is an AS2 `Note` (short) or `Article` (long) that also has type `Prompt
 
 ```json
 {
-  "@context": ["https://www.w3.org/ns/activitystreams", "https://quill.example/ns/wr/1.0"],
+  "@context": ["https://www.w3.org/ns/activitystreams", "https://plait.example/ns/wr/1.0"],
   "type": ["Note", "Prompt"],
   "id": "https://alpha.example/prompts/0192f3b0-1a2b-7c3d-8e4f-001122334455",
   "attributedTo": "https://alpha.example/users/inkfox",
@@ -227,7 +227,7 @@ Inside every MLS application message is one AS2 activity in UTF-8 JSON, followin
 
 ```json
 {
-  "@context": ["https://www.w3.org/ns/activitystreams", "https://quill.example/ns/wr/1.0"],
+  "@context": ["https://www.w3.org/ns/activitystreams", "https://plait.example/ns/wr/1.0"],
   "type": "Create",
   "id": "urn:uuid:0192f3d0-1111-7222-8333-444455556666",
   "channel": "story",
@@ -296,7 +296,7 @@ As built in 2k, for history:
 - A device of the login that has read past `to` (or to the end of an ended session) with no gap of its own in the range answers with `HistoryBundle {forDevice, session, from, to, parts, last}`. Each part is an `EncryptedAttachment` for a blob in the device group (`POST /groups/{id}/blobs`): either JSON rows (the notes with a version in the range, with every version; every channel and its descriptions; the `authorSeq` values seen per device), or one file the notes carry, named by its original attachment URL. At most 10 blobs per message; more parts go in more messages, the final one marked `last`.
 - The asker merges: notes it lacks are added, notes it has gain the versions they lack (by log position; none is ever dropped), counts are joined. Once `last` arrives with every part, the range is had. It then deletes the bundle's blobs (`DELETE /blobs/{id}`, allowed only for the login's own device group). Another device seeing an answer to a request it holds drops the request.
 - A request nobody answers is sent again after 7 days, and dropped by the devices holding it after 30.
-- The server deletes ciphertext older than `retentionDays` whether or not it was read. A server that keeps it regardless of age (`QUILL_RETENTION_DAYS=-1`) publishes `retentionDays: null`; messages then go only once every device has read them.
+- The server deletes ciphertext older than `retentionDays` whether or not it was read. A server that keeps it regardless of age (`PLAIT_RETENTION_DAYS=-1`) publishes `retentionDays: null`; messages then go only once every device has read them.
 - These are JSON objects tagged by `type` inside the device group's MLS messages, like the 2d payloads, not ActivityStreams activities.
 
 As built (2d, 2k), the types are `deviceGrant` (identity keys, trust pins and the login's known devices, for a newly linked device), `deviceKeys` (which persona devices belong to the sending device, with the name its owner gave it and when it joined, both added in 3d and seen only by the login's devices), `historyRequest` and `historyBundle`; `Settings` and `Personas` aren't built. Schema: [`schemas/device-payload.json`](../schemas/device-payload.json).
@@ -336,7 +336,7 @@ All structures use TLS presentation language (as in RFC 9420) and are signed wit
 
 1.  The new device creates its device key and a KeyPackage and posts them to `POST /api/v1/link`, getting a random 128-bit `link_id` that expires in 10 minutes.
 
-2.  It displays a QR code `quill-link:1:<server host>:<link_id>:<fp>`, where `fp` = SHA-256 of the serialized KeyPackage, base64url. The typed alternative is the first 66 bits of `fp` as 6 words (BIP-39 English list). Typed alone, the existing device finds the `link_id` with `GET /api/v1/link`, which lists the login's unanswered links, and only when the person chooses to link. If more than one is waiting it refuses the words: another may have been started by someone holding the password. The full code, or the `link_id` followed by the words, still names one link. Forging a KeyPackage whose fingerprint shares those 66 bits within the 10 minutes is as hard either way.
+2.  It displays a QR code `plait-link:1:<server host>:<link_id>:<fp>`, where `fp` = SHA-256 of the serialized KeyPackage, base64url. The typed alternative is the first 66 bits of `fp` as 6 words (BIP-39 English list). Typed alone, the existing device finds the `link_id` with `GET /api/v1/link`, which lists the login's unanswered links, and only when the person chooses to link. If more than one is waiting it refuses the words: another may have been started by someone holding the password. The full code, or the `link_id` followed by the words, still names one link. Forging a KeyPackage whose fingerprint shares those 66 bits within the 10 minutes is as hard either way.
 
 3.  The existing device fetches the KeyPackage from the mailbox and checks `fp`; on mismatch it aborts and warns.
 
@@ -371,7 +371,7 @@ As built in 2j, on one server: the request goes to `POST /sessions/{id}/rejoin`,
 
 As built in 2j:
 - The recovery code is a BIP-39 mnemonic: 128 bits plus a 4-bit checksum, 12 words. The passphrase is the words, lowercase, joined by single spaces. scrypt's work factor is 15: the code is random, so it needs no stretching.
-- The plaintext is one zstd frame holding JSON, not CBOR: `{format: "quill-backup", version: 2, createdMs, tables}`, where `tables` maps the client store's `identities`, `pins`, `verified`, `messages` and `files` tables to lists of `[key, value]` in base64url. Version 1 (2j) was the same JSON uncompressed; 2m added the compression, and readers take version 2 only. Readers decompress at most 1 GiB. The client compresses with `ruzstd`, which is pure Rust.
+- The plaintext is one zstd frame holding JSON, not CBOR: `{format: "plait-backup", version: 2, createdMs, tables}`, where `tables` maps the client store's `identities`, `pins`, `verified`, `messages` and `files` tables to lists of `[key, value]` in base64url. Version 1 (2j) was the same JSON uncompressed; 2m added the compression, and readers take version 2 only. Readers decompress at most 1 GiB. The client compresses with `ruzstd`, which is pure Rust.
 - There are no incremental chunks yet: each backup replaces the last whole. It's uploaded in parts of up to 8 MiB (`PUT /backup/{generation}/{part}`), then committed (`POST /backup/{generation}/commit`), so a failed upload never replaces a good backup.
 - The `age` crate does the work, behind a small interface so our own implementation of the format can replace it.
 
@@ -450,7 +450,7 @@ Every proposed `wr:` term; "federated" terms appear in public ActivityPub object
 | 3   | Is "busy" public?              | Yes, `promptState` stays visible on the board.                                                                                           |
 | 4   | Expiry window                  | 30 days by default.                                                                                                                      |
 | 5   | `expires` vs AS2 `endTime`     | Keep `expires`.                                                                                                                          |
-| 6   | Project name and domain        | Keep `quill.example` placeholder; replace before public release.                                                                         |
+| 6   | Project name and domain        | Keep `plait.example` placeholder; replace before public release.                                                                         |
 | 7   | KeyPackage claim endpoint      | Private extension for now; noted as a candidate to propose upstream to SWICG.                                                            |
 | 8   | Web client limited by default? | Yes: linked web clients are `limited` unless the user opts in to full.                                                                   |
 
@@ -495,7 +495,7 @@ The author of a deleted local prompt sees "removed by server administrator" on i
 | `POST /admin/reports/{id}/resolve` | `discard`, `delete`, or `forward`       |
 | `GET /admin/log`                   | Read the action log                     |
 
-Administrator pages live in the board UI behind an admin role; the CLI gets `quill admin reports` and `quill admin resolve`.
+Administrator pages live in the board UI behind an admin role; the CLI gets `plait admin reports` and `plait admin resolve`.
 
 ## 11. Conformance artifacts
 
