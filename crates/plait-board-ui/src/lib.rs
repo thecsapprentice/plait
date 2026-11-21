@@ -11,6 +11,7 @@
 
 mod admin;
 mod announcements;
+pub mod art;
 pub mod chips;
 mod filters;
 mod layout;

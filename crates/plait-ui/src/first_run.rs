@@ -3,6 +3,7 @@
 //! come up when a server opens: unlock, and keys on another device.
 
 use dioxus::prelude::*;
+use plait_board_ui::art;
 
 use crate::{
     app::{ProblemLine, open_server, use_ui},
@@ -20,18 +21,35 @@ pub fn Starting() -> Element {
     let (_, model) = use_ui();
     let name = model.read().server_name();
     rsx! {
-        div { class: "welcome",
+        div { class: "welcome starting",
+            Loader {}
             p { class: "coming", role: "status", "Opening {name}…" }
         }
     }
 }
 
-/// A card in the middle of the window, for one question.
+/// The shuttle, while something takes a moment. Decoration: the screen
+/// says in words what's happening.
+#[component]
+fn Loader() -> Element {
+    rsx! {
+        div { class: "loader", aria_hidden: "true", dangerous_inner_html: art::LOADER_SHUTTLE }
+    }
+}
+
+/// One question to a screen: the hero beside the card when there's room,
+/// above it when there isn't (assets/brand/README.md, "The login hero").
+/// The art is decoration, hidden from assistive tech.
 #[component]
 pub(crate) fn Card(title: String, lede: String, children: Element) -> Element {
     rsx! {
         main { class: "welcome",
+            div { class: "hero", aria_hidden: "true",
+                div { class: "hero-light", dangerous_inner_html: art::HERO_LIGHT }
+                div { class: "hero-dark", dangerous_inner_html: art::HERO_DARK }
+            }
             section { class: "card", aria_labelledby: "card-title",
+                div { class: "card-band", aria_hidden: "true", dangerous_inner_html: art::PLAIT_BAND }
                 h1 { id: "card-title", "{title}" }
                 p { class: "lede", "{lede}" }
                 {children}
@@ -695,6 +713,9 @@ pub fn PreparingStep(persona: uuid::Uuid, replace: bool) -> Element {
         Card {
             title,
             lede,
+            if problem.is_none() {
+                Loader {}
+            }
             ol { class: "steps", aria_live: "polite",
                 for (i, label, class, mark, said) in steps {
                     li { key: "{i}", class,

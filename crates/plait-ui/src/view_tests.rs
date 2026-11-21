@@ -188,7 +188,9 @@ fn keys_elsewhere_and_getting_ready_say_what_is_happening() {
     let m = opened(&fake);
     let html = render(fake, Some(m));
     assert!(html.contains("Getting @ink_fox ready"), "{html}");
-    assert_eq!(html.matches("<li").count(), 3);
+    let steps = from_class(&html, "steps");
+    let steps = &steps[..steps.find("</ol>").unwrap()];
+    assert_eq!(steps.matches("<li ").count(), 3, "{steps}");
 }
 
 #[test]
@@ -316,4 +318,61 @@ async fn opening_a_server_finishes_after_its_screen_has_gone() {
         dom.render_immediate(&mut dioxus::dioxus_core::NoOpMutations);
     }
     assert_eq!(status.get(), Some(crate::model::Status::Connected));
+}
+
+/// The element with `class` (its opening tag and the rest), or a panic.
+fn from_class<'a>(html: &'a str, class: &str) -> &'a str {
+    let at = html
+        .find(&format!(r#"class="{class}""#))
+        .unwrap_or_else(|| panic!("no .{class} in {html}"));
+    &html[html[..at].rfind('<').unwrap()..]
+}
+
+/// The brand's art on the welcome screens (R5) is decoration: the hero
+/// (light and dark), the band along the card and the loader are hidden from
+/// assistive tech, and nothing in them is text a writer reads.
+#[test]
+fn the_welcome_art_is_there_and_hidden_from_assistive_tech() {
+    let html = render(Fake::empty(), None);
+    let hero = from_class(&html, "hero");
+    assert!(
+        hero.starts_with(r#"<div class="hero" aria-hidden="true""#),
+        "{hero}"
+    );
+    assert!(hero.contains(r#"class="hero-light""#) && hero.contains(r#"class="hero-dark""#));
+    assert!(
+        hero.contains("hl-warpmask") && hero.contains("hd-warpmask"),
+        "both heroes inlined"
+    );
+    let band = from_class(&html, "card-band");
+    assert!(
+        band.starts_with(r#"<div class="card-band" aria-hidden="true""#),
+        "{band}"
+    );
+    assert!(band.contains("<svg"));
+    assert!(visible(&html).contains("Welcome to Plait"));
+}
+
+#[test]
+fn opening_and_making_keys_show_the_shuttle_quietly() {
+    // A server opening at start.
+    let html = render(Fake::signed_in(vec![persona("ink_fox", Keys::Ready)]), None);
+    let loader = from_class(&html, "loader");
+    assert!(
+        loader.starts_with(r#"<div class="loader" aria-hidden="true""#),
+        "{loader}"
+    );
+    assert!(loader.contains("plait-throw"), "the shuttle");
+    assert!(visible(&html).contains("Opening writers.example"));
+    // Getting a persona ready.
+    let fake = Fake::signed_in(vec![persona("ink_fox", Keys::ToSetUp)]);
+    let model = opened(&fake);
+    assert!(matches!(model.screen, Screen::Preparing { .. }));
+    let html = render(fake, Some(model));
+    let loader = from_class(&html, "loader");
+    assert!(
+        loader.starts_with(r#"<div class="loader" aria-hidden="true""#),
+        "{loader}"
+    );
+    assert!(visible(&html).contains("Getting @ink_fox ready"));
 }
