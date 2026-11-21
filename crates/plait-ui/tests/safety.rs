@@ -66,6 +66,24 @@ async fn comparing_is_offered_and_they_match_verifies() {
     d.wait_for_text("Verified on this computer").await;
 }
 
+/// Found investigating #103 (under load, in e2e): hiding the panel right
+/// after "They match" left the heading unverified. The session's reload was
+/// the panel's work, so closing the panel cancelled it.
+#[tokio::test]
+async fn hiding_the_panel_at_once_still_shows_them_verified() {
+    let sim = sim();
+    let (mut d, _) = reading(&sim).await;
+    d.click("Compare safety numbers").await;
+    d.wait_for_text("Your 12 words with @wren").await;
+    // Reading the session again is slow, as on a busy computer.
+    sim.hold_sessions();
+    d.click("They match").await;
+    d.click("Hide the safety numbers").await;
+    d.settle().await;
+    sim.release_sessions();
+    d.wait_for_text("Verified on this computer").await;
+}
+
 #[tokio::test]
 async fn a_verified_writers_changed_key_is_said_plainly() {
     let sim = sim();

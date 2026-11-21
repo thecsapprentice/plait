@@ -38,12 +38,14 @@ pub(crate) fn tab_label(name: &str) -> String {
     }
 }
 
-/// Loads in the background; on failure the screen keeps what it had.
+/// Loads in the background; on failure the screen keeps what it had. The
+/// app's work, not the caller's: a form or panel that asks for it often
+/// closes at once, which would cancel a task of its own (#103).
 pub fn reload(b: Rc<dyn Backend>, model: Signal<Model>) {
     let Some(server) = model.peek().current else {
         return;
     };
-    spawn(async move {
+    dioxus::dioxus_core::spawn_forever(async move {
         let _ = load(b.as_ref(), model, server).await;
     });
 }
@@ -241,9 +243,9 @@ pub fn OpenSession(
                 }
                 // Clicked before the list has it: read the list, then open
                 // the session, or the list if this computer hasn't it yet.
+                // The app's work, not this button's: `on_open` may remove it.
                 let (b, me, partner) = (backend.clone(), me.clone(), partner.clone());
                 dioxus::dioxus_core::spawn_forever(async move {
-                // The app's work, not this button's: `on_open` may remove it.
                     let server = model.peek().current;
                     if let Some(server) = server {
                         let _ = load(b.as_ref(), model, server).await;
