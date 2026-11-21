@@ -28,7 +28,7 @@ the icon names. See "Vocabulary" in
 ## Palette
 
 The neutrals and the teal are the client's existing tokens
-(`crates/quill-ui/src/style.css`), so nothing in the app changes colour.
+(`crates/plait-ui/src/style.css`), so nothing in the app changes colour.
 The other three are new "thread" tokens: one per writer in the art, and
 free for the UI to use for writer identity later.
 
@@ -41,7 +41,8 @@ free for the UI to use for writer identity later.
 | `--ink` / `--paper` / `--line` / `--muted` | existing | existing | Unchanged |
 | `--wood` | `#b98a5a` | `#9c7550` | The shuttle in illustrations |
 
-Add the new tokens beside the old ones in each of the three theme blocks
+Add the new tokens beside the old ones in each of the four theme blocks
+(light and dark are each written twice)
 of `style.css` (and `board.css` if the board uses the illustrations):
 
 ```css
@@ -141,11 +142,11 @@ own files, compiled in, so `dangerous_inner_html` takes no outside input).
 .card-band { position: absolute; inset: 0 0 auto 0; height: 6px; }
 .card-band svg { width: 100%; height: 100%; display: block; }
 .hero-dark { display: none; }
-.quill[data-theme="dark"] .hero-light { display: none; }
-.quill[data-theme="dark"] .hero-dark { display: contents; }
+.plait[data-theme="dark"] .hero-light { display: none; }
+.plait[data-theme="dark"] .hero-dark { display: contents; }
 @media (prefers-color-scheme: dark) {
-  .quill:not([data-theme="light"]) .hero-light { display: none; }
-  .quill:not([data-theme="light"]) .hero-dark { display: contents; }
+  .plait:not([data-theme="light"]) .hero-light { display: none; }
+  .plait:not([data-theme="light"]) .hero-dark { display: contents; }
 }
 @media (min-width: 900px) {
   .welcome { grid-template-columns: minmax(20rem, 1.1fr) minmax(26rem, 1fr); grid-template-rows: 100vh; padding: 0; place-items: center; }
@@ -154,21 +155,19 @@ own files, compiled in, so `dangerous_inner_html` takes no outside input).
 }
 ```
 
-(`.quill` becomes `.plait` with the rename.) The `Starting` screen and the
+The `Starting` screen and the
 `PreparingStep` ("making the keys") are good homes for
 `loader-shuttle.svg`; it stops moving when the system asks for reduced
 motion.
 
 ## Window icon and packaging
 
-- **Window.** `quill-gui/src/main.rs` builds the window's `Config`. Add
-  `.with_icon(icon)` *after* `.with_window(...)` (it writes into the
-  window builder that `with_window` sets). `icon` is tao's
-  `window::Icon::from_rgba(rgba, 256, 256)` over `png/plait-256.png`,
-  decoded at startup with the `png` crate (already in `Cargo.lock`; as a
-  direct dependency it needs a `cargo vet` entry), or embedded as raw RGBA
-  by a build script to avoid the dependency.
-- **Installers.** Windows wants `plait.ico`, macOS `plait.icns`, Linux the
+- **Window** (done in R4). `plait-gui/src/main.rs` embeds
+  `png/plait-256.png` and decodes it with dioxus-desktop's
+  `icon_from_memory`, which uses the `image` crate it already links, so
+  nothing new is added or vetted. `.with_icon(icon)` comes *after*
+  `.with_window(...)`, which replaces the window builder the icon is set on.
+- **Installers** (with packaging, #32). Windows wants `plait.ico`, macOS `plait.icns`, Linux the
   PNGs (`hicolor/{size}x{size}/apps/plait.png`) with a `.desktop` file
   named `plait.desktop` and `Icon=plait`. Whichever bundler Phase 3
   settles on reads these paths from its config.
@@ -176,10 +175,10 @@ motion.
 ## The public board
 
 - Replace the `/favicon.ico` route (it returns 204 today, and
-  `quill-e2e/tests/board.rs` checks that) with one serving
+  `plait-e2e/tests/board.rs` checks that) with one serving
   `app-icon/favicon.ico`, plus `/favicon.svg` and `/apple-touch-icon.png`,
   with long cache headers. Add the `link rel="icon"` tags to the board's
-  `head` in `quill-board-ui/src/lib.rs`.
+  `head` in `plait-board-ui/src/lib.rs`.
 - Add `og:title`, `og:description` and `og:image` (`social/og-card-light.png`,
   served from the same origin) to that `head`.
 - The board renders without JavaScript, so the illustrations are inlined
