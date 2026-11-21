@@ -302,3 +302,30 @@ fn the_brand_colours_are_in_every_theme() {
         );
     }
 }
+
+/// The welcome hero (R5): the dark one shows only in a dark theme, chosen
+/// in settings or by the system when the setting is "system", and the
+/// light one otherwise. Both are inlined, so a missing rule shows both.
+#[test]
+fn one_welcome_hero_shows_for_each_theme() {
+    let css = crate::STYLE;
+    let has = |rule: &str| assert!(css.contains(rule), "missing `{rule}`");
+    has(".hero-dark { display: none; }");
+    has(".plait[data-theme=\"dark\"] .hero-light { display: none; }");
+    has(".plait[data-theme=\"dark\"] .hero-dark { display: contents; }");
+    let system = &css[css
+        .find(".plait:not([data-theme=\"light\"]) .hero-light")
+        .expect("system dark")..];
+    assert!(
+        system.contains(".plait:not([data-theme=\"light\"]) .hero-dark { display: contents; }")
+    );
+    let before = &css[..css
+        .find(".plait:not([data-theme=\"light\"]) .hero-light")
+        .unwrap()];
+    assert!(
+        before
+            .trim_end()
+            .ends_with("@media (prefers-color-scheme: dark) {"),
+        "inside the system's dark setting"
+    );
+}
