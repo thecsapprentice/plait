@@ -198,6 +198,7 @@ fn Nav() -> Element {
                     class: "section",
                     aria_current: if s == section { "page" } else { "false" },
                     onclick: move |_| model.write().go(s),
+                    {plait_board_ui::art::icon(s.icon(), "section-icon")}
                     "{s.label()}"
                     if s == Section::Notices && unread > 0 {
                         span { class: "badge", " {unread}" span { class: "sr-only", " unread" } }

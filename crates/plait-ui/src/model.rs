@@ -5,6 +5,7 @@
 //! methods; nothing here awaits. Results for a server that's no longer the
 //! one in view are dropped, so switching quickly never shows stale data.
 
+use plait_board_ui::icons::Icon;
 use uuid::Uuid;
 
 use crate::backend::{
@@ -83,6 +84,23 @@ impl Section {
             Section::Rules => "Server rules",
             Section::Devices => "Devices",
             Section::Reference => "Design reference",
+        }
+    }
+
+    /// Drawn beside the label in the side bar (the label is the name).
+    pub fn icon(self) -> Icon {
+        match self {
+            Section::Home => Icon::Home,
+            Section::Board => Icon::Board,
+            Section::MyPrompts => Icon::MyPrompts,
+            Section::Notices => Icon::Notices,
+            Section::Requests => Icon::Request,
+            Section::Sessions => Icon::Session,
+            Section::Personas => Icon::Personas,
+            Section::Settings => Icon::Settings,
+            Section::Rules => Icon::Rules,
+            Section::Devices => Icon::Devices,
+            Section::Reference => Icon::Story,
         }
     }
 }

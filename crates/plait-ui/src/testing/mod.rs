@@ -661,6 +661,13 @@ impl Driver {
                 }
                 _ => {}
             }
+            // An icon beside words is hidden; one standing alone is named.
+            if tag(n) == "svg"
+                && attr(n, "aria-hidden").as_deref() != Some("true")
+                && !attr(n, "aria-label").is_some_and(|l| !l.trim().is_empty())
+            {
+                out.push("an svg neither hidden nor labelled".to_owned());
+            }
             if attr(n, "role").as_deref() == Some("img")
                 && !attr(n, "aria-label").is_some_and(|l| !l.trim().is_empty())
             {
@@ -717,6 +724,32 @@ impl Driver {
         }
         self.with_class(outer)
             .is_some_and(|n| walk(&self.doc, n, inner))
+    }
+
+    /// Each element with `class`: its text, and whether it holds an icon
+    /// (an `svg`) hidden from assistive tech. For nav entries and the like.
+    pub fn icons_and_labels(&self, class: &str) -> Vec<(String, bool)> {
+        fn hidden_svg(doc: &Doc, n: usize) -> bool {
+            doc.nodes[n].children.iter().any(|c| {
+                (doc.tag(*c) == Some("svg") && doc.attr(*c, "aria-hidden") == Some("true"))
+                    || hidden_svg(doc, *c)
+            })
+        }
+        self.doc
+            .attached()
+            .into_iter()
+            .filter(|n| {
+                self.doc
+                    .attr(*n, "class")
+                    .is_some_and(|c| c.split_whitespace().any(|w| w == class))
+            })
+            .map(|n| {
+                (
+                    self.doc.text_of(n).trim().to_owned(),
+                    hidden_svg(&self.doc, n),
+                )
+            })
+            .collect()
     }
 
     /// Whether an element with `class` is in the window.
