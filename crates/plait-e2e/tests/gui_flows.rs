@@ -89,6 +89,50 @@ async fn first_run_against_a_real_server() {
     server.stop().await.unwrap();
 }
 
+/// #103: the app opened while this process still held the server's store
+/// (work from a window just closed, still running) said "Something went
+/// wrong." and stayed stuck. It says the store is busy, and opens it once
+/// it's free.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn opening_while_the_store_is_still_busy_waits_for_it() {
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Arc::new(MemoryVault::default());
+    let backend = |vault: &Arc<MemoryVault>| {
+        let vault: Arc<dyn Vault> = vault.clone();
+        Rc::new(
+            NativeBackend::new(
+                Paths::in_dir(dir.path()),
+                Some(vault),
+                tokio::runtime::Handle::current(),
+            )
+            .unwrap(),
+        )
+    };
+    let first = backend(&vault);
+    let mut d = Driver::new(first.clone());
+    to_sign_up(&mut d, &server).await;
+    d.type_into("login-name", "ink").await;
+    d.type_into("login-password", PASSWORD).await;
+    d.click("Make my login").await;
+    d.wait_for_text("Make your first persona").await;
+    d.type_into("persona-handle", "ink_fox").await;
+    d.click("Make this persona").await;
+    d.wait_for_text("Hello, @ink_fox").await;
+    // The window closes, but `first` still holds the store, as work it
+    // started would.
+    drop(d);
+    let mut d = Driver::new(backend(&vault));
+    d.wait_for_text("Plait is still using this server's store.")
+        .await;
+    assert!(!d.has_text("Something went wrong."));
+    drop(first);
+    d.wait_for_text("Hello, @ink_fox").await;
+    server.stop().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn rules_required_after_sign_up_opened_against_a_real_server() {
     let Some(server) = TestServer::start().await.unwrap() else {
