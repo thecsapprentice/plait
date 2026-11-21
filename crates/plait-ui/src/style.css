@@ -268,6 +268,7 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .tag.new { background: var(--accent-soft); color: var(--ink); }
 .badge { font-size: var(--text-xs); font-weight: 600; background: var(--bad); color: var(--bad-ink); border-radius: var(--radius-pill); padding: 0 var(--space-2); }
 .section .badge { margin-left: auto; }
+.section-icon { width: 1.25rem; height: 1.25rem; flex: none; }
 .slot { font-size: var(--text-sm); padding: 0 var(--space-2); border-radius: var(--radius-pill); border: 1px dashed var(--muted); color: var(--muted); }
 
 /* ---- Tables of details (advanced mode) ---- */
@@ -379,6 +380,9 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .status.offline .dot { background: var(--warn); }
 .status button { margin-left: auto; }
+/* The broken thread, in place of the dot: its drawing is a thin band
+   across the middle, so it can overhang the line's padding. */
+.status .illustration.offline { width: 3rem; margin: -0.6rem 0; flex: none; }
 
 /* ---- Lists ---- */
 
@@ -424,6 +428,13 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .row-meta { font-size: 0.8rem; color: var(--muted); }
 .row-line { font-size: 0.9rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-end { padding: 0.8rem 0.4rem; color: var(--muted); font-size: 0.9rem; }
+/* Empty states: the drawing above the words that say what's missing. Each
+   drawing has about an eighth of its width blank on the left, so a page's
+   illustration is pulled back to line up with the text. */
+.illustration { width: min(12rem, 100%); margin: 1rem 0 0.5rem -1.5rem; }
+.illustration svg { display: block; width: 100%; height: auto; }
+.list-end:has(.illustration) { text-align: center; }
+.list-end .illustration { margin: 0.5rem auto 0.75rem; }
 .board-reader { position: sticky; top: 0; }
 .reader h2 { font-size: 1.9rem; margin: 0.2rem 0 0.3rem; }
 .reader-meta { color: var(--muted); font-size: 0.9rem; margin: 0 0 1rem; }
