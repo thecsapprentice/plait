@@ -7,13 +7,17 @@
 //! on any cryptographic or MLS crate, because the server links it.
 //!
 //! Safety: all text is escaped by Dioxus. The only raw HTML inserted is a
-//! prompt's `body_html`, which the server has already sanitized.
+//! prompt's `body_html`, which the server has already sanitized, and our
+//! own SVG art (`art`), compiled in.
 
 mod admin;
 mod announcements;
 pub mod art;
 pub mod chips;
 mod filters;
+// Generated (assets/brand/src/build.py) and kept identical to its source.
+#[rustfmt::skip]
+pub mod icons;
 mod layout;
 mod moderation;
 mod notices;
