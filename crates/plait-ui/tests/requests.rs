@@ -460,6 +460,7 @@ async fn withdrawing_asks_once_then_withdraws() {
     sent_one(&sim, &mut d).await;
     d.click("See your requests").await;
     d.wait_for_text("You sent").await;
+    assert!(!d.has_element_with_class("empty-requests"), "one is sent");
     d.click("Withdraw…").await;
     assert!(d.has_text("Withdraw your request on “The lighthouse ledger”?"));
     d.click("Keep it").await;
@@ -468,6 +469,10 @@ async fn withdrawing_asks_once_then_withdraws() {
     d.click("Withdraw this request").await;
     d.wait_for_text("You haven't asked to write on a prompt yet.")
         .await;
+    assert!(
+        d.has_hidden_with_class("empty-requests"),
+        "the shuttle at rest"
+    );
     assert!(sim.requests_on(SERVER).is_empty());
 }
 

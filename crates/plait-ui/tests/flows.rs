@@ -451,9 +451,13 @@ async fn offline_at_start_shows_the_frame_and_recovers() {
     let mut d = app(&sim);
     d.wait_for_text("Can't reach writers.example").await;
     assert!(d.has_text("Home"), "the frame is up");
+    assert!(d.has_hidden_with_class("offline"), "a broken thread");
+    assert!(!d.has_element_with_class("dot"));
     sim.server(SERVER, |s| s.reachable = true);
     d.click("Try now").await;
     d.wait_for_text("Connected to writers.example").await;
+    assert!(!d.has_element_with_class("illustration"));
+    assert!(d.has_element_with_class("dot"));
     d.wait_for_text("Hello, @ink_fox").await;
 }
 

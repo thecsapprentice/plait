@@ -7,7 +7,10 @@
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-use plait_board_ui::short_date;
+use plait_board_ui::{
+    art::{Illustration, illustration},
+    short_date,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -105,6 +108,9 @@ pub fn RequestsPage() -> Element {
         if !r.loaded {
             p { class: "coming", "Loading requests…" }
         } else {
+            if r.waiting.is_empty() && r.sent.is_empty() {
+                {illustration(Illustration::EmptyRequests)}
+            }
             section { class: "requests-part", aria_labelledby: "on-your-prompts",
                 h2 { id: "on-your-prompts", "On your prompts" }
                 if r.waiting.is_empty() {

@@ -752,6 +752,17 @@ impl Driver {
             .collect()
     }
 
+    /// Whether an element with `class` is in the window, hidden from
+    /// assistive tech: decoration such as an empty state's illustration.
+    pub fn has_hidden_with_class(&self, class: &str) -> bool {
+        self.doc.attached().into_iter().any(|n| {
+            self.doc
+                .attr(n, "class")
+                .is_some_and(|c| c.split_whitespace().any(|w| w == class))
+                && self.doc.attr(n, "aria-hidden") == Some("true")
+        })
+    }
+
     /// Whether an element with `class` is in the window.
     pub fn has_element_with_class(&self, class: &str) -> bool {
         self.doc.attached().into_iter().any(|n| {

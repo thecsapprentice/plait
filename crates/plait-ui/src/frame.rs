@@ -242,7 +242,11 @@ fn StatusLine() -> Element {
     };
     rsx! {
         footer { class, role: "status",
-            span { class: "dot", aria_hidden: "true" }
+            if status == Status::Offline {
+                {plait_board_ui::art::illustration(plait_board_ui::art::Illustration::Offline)}
+            } else {
+                span { class: "dot", aria_hidden: "true" }
+            }
             span { "{text}" }
             if let Some(code) = code {
                 crate::app::Code { code }
