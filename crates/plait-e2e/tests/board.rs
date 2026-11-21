@@ -204,7 +204,7 @@ async fn the_board_serves_its_icons_and_social_card() {
 }
 
 #[tokio::test]
-async fn pages_carry_the_icon_links_and_preview_tags() {
+async fn pages_carry_the_icon_links_preview_tags_mark_and_hero() {
     let server = server!();
     let mut b = Browser::new(&server);
     let home = b.get("/").await;
@@ -216,8 +216,26 @@ async fn pages_carry_the_icon_links_and_preview_tags() {
         r#"<meta property="og:description" content="Writing prompts, and people to write them with, on a Plait server.""#,
         r#"<meta property="og:image" content="https://localhost/static/brand/social-card.png""#,
         r#"<meta name="twitter:card" content="summary_large_image""#,
+        r#"<img src="/static/brand/plait-mark.svg" alt="""#,
     ] {
         assert!(home.body.contains(tag), "missing {tag}");
+    }
+    assert!(
+        !home.body.contains("auth-hero"),
+        "the hero is for signing in"
+    );
+    for path in ["/login", "/register"] {
+        let page = b.get(path).await;
+        assert!(
+            page.body
+                .contains(r#"<img src="/static/brand/hero-light.svg" alt="""#),
+            "{path}"
+        );
+        assert!(
+            page.body
+                .contains(r#"srcset="/static/brand/hero-dark.svg""#),
+            "{path}"
+        );
     }
     // A page's own title is the preview's title.
     let login = b.get("/login").await;

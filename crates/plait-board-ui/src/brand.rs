@@ -2,6 +2,8 @@
 //! in the header, the sign-in hero and the social card. The server mounts
 //! each `Asset` at its path; the pages link them from here.
 
+use dioxus::prelude::*;
+
 /// One file served at a fixed path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Asset {
@@ -76,6 +78,27 @@ pub const ALL: [Asset; 8] = [
 /// The browser caches these for a week. Their URLs carry no version, so a
 /// changed file reaches visitors within that week rather than at once.
 pub const CACHE_CONTROL: &str = "public, max-age=604800";
+
+/// A light drawing with its dark-theme counterpart, decorative (empty
+/// `alt`), switched by the system theme as the rest of the board is.
+fn themed(light: Asset, dark: Asset, class: &'static str) -> Element {
+    rsx! {
+        picture { class,
+            source { "srcset": dark.path, "media": "(prefers-color-scheme: dark)" }
+            img { src: light.path, alt: "" }
+        }
+    }
+}
+
+/// The Plait mark, beside the server's name in the header.
+pub(crate) fn mark() -> Element {
+    themed(MARK_LIGHT, MARK_DARK, "site-mark")
+}
+
+/// The woven hero above the sign-in and register forms.
+pub(crate) fn hero() -> Element {
+    themed(HERO_LIGHT, HERO_DARK, "auth-hero")
+}
 
 #[cfg(test)]
 mod tests {
