@@ -8,6 +8,10 @@ use plait_core::store::vault::{OsKeychain, Vault};
 use plait_gui::{NativeBackend, settings::Paths};
 use plait_ui::{App, STYLE, Ui};
 
+/// The app icon at 256px, for the window's title bar and the taskbar.
+/// Packaged builds also carry the installers' icons (assets/brand/app-icon).
+const ICON_PNG: &[u8] = include_bytes!("../../../assets/brand/app-icon/png/plait-256.png");
+
 /// A label added to the window's title, for development.
 const LABEL_ENV: &str = "PLAIT_GUI_LABEL";
 
@@ -63,7 +67,18 @@ fn setup() -> anyhow::Result<(VirtualDom, dioxus_desktop::Config, tokio::runtime
                 .with_inner_size(dioxus_desktop::LogicalSize::new(1180.0, 780.0))
                 .with_min_inner_size(dioxus_desktop::LogicalSize::new(360.0, 480.0)),
         );
+    // After `with_window`, which replaces the window builder the icon goes in.
+    let config = match window_icon() {
+        Some(icon) => config.with_icon(icon),
+        None => config,
+    };
     Ok((dom, config, runtime))
+}
+
+/// The window's icon, decoded from the embedded PNG. Without it the window
+/// would carry Dioxus's own.
+fn window_icon() -> Option<dioxus_desktop::tao::window::Icon> {
+    dioxus_desktop::icon_from_memory(ICON_PNG).ok()
 }
 
 /// The platform's part of the root: spellcheck, then plait-ui's app.
@@ -93,3 +108,14 @@ fn spellcheck() {
 
 #[cfg(not(target_os = "linux"))]
 fn spellcheck() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_window_icon_is_the_app_icon_and_decodes() {
+        assert!(ICON_PNG.starts_with(b"\x89PNG"));
+        assert!(window_icon().is_some());
+    }
+}

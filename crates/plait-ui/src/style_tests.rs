@@ -262,3 +262,43 @@ fn the_session_pages_controls_keep_their_place() {
     );
     assert!(rule(".session-actions").contains("font-size: var(--text-sm)"));
 }
+
+/// The brand's thread and wood colours (assets/brand/README.md,
+/// "Palette"), in every theme block, light and dark alike.
+#[test]
+fn the_brand_colours_are_in_every_theme() {
+    let light = [
+        ("thread-ochre", "#c27f1d"),
+        ("thread-madder", "#b0405a"),
+        ("thread-indigo", "#3d4f96"),
+        ("wood", "#b98a5a"),
+    ];
+    let dark = [
+        ("thread-ochre", "#e8b25e"),
+        ("thread-madder", "#e37a92"),
+        ("thread-indigo", "#8f9fe6"),
+        ("wood", "#9c7550"),
+    ];
+    for (block, want) in [
+        (":root", light),
+        (".plait[data-theme=\"light\"]", light),
+        ("  :root, .plait:not([data-theme=\"light\"])", dark),
+        (".plait[data-theme=\"dark\"]", dark),
+    ] {
+        let c = colours(block);
+        for (name, hex) in want {
+            assert_eq!(
+                c.get(name).map(String::as_str),
+                Some(hex),
+                "--{name} in {block}"
+            );
+        }
+        let css = crate::STYLE;
+        let body = &css[css.find(&format!("{block} {{")).unwrap_or(0)..];
+        let body = &body[..body.find('}').unwrap_or(body.len())];
+        assert!(
+            body.contains("--thread-teal: var(--accent);"),
+            "--thread-teal in {block}"
+        );
+    }
+}
