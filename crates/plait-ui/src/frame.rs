@@ -198,6 +198,7 @@ fn Nav() -> Element {
                     class: "section",
                     aria_current: if s == section { "page" } else { "false" },
                     onclick: move |_| model.write().go(s),
+                    {plait_board_ui::art::icon(s.icon(), "section-icon")}
                     "{s.label()}"
                     if s == Section::Notices && unread > 0 {
                         span { class: "badge", " {unread}" span { class: "sr-only", " unread" } }
@@ -241,7 +242,11 @@ fn StatusLine() -> Element {
     };
     rsx! {
         footer { class, role: "status",
-            span { class: "dot", aria_hidden: "true" }
+            if status == Status::Offline {
+                {plait_board_ui::art::illustration(plait_board_ui::art::Illustration::Offline)}
+            } else {
+                span { class: "dot", aria_hidden: "true" }
+            }
             span { "{text}" }
             if let Some(code) = code {
                 crate::app::Code { code }

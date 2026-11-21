@@ -4,39 +4,14 @@ use dioxus::prelude::*;
 use plait_proto::board::{Prompt, PromptState, Tag, TagStatus};
 
 use crate::{
-    CSRF_FIELD, Chrome, Nav, chips::chip_classes, maturity_label, short_date, state_label, tag_url,
+    CSRF_FIELD, Chrome, Nav, art, chips::chip_classes, icons::Icon, maturity_label, short_date,
+    state_label, tag_url,
 };
 
-/// The small line icons of the phone's tab bar. Plain SVG markup, so the
-/// CSP's ban on inline styles doesn't apply; hidden on wide screens.
-#[derive(Clone, Copy)]
-enum Icon {
-    Board,
-    Post,
-    Mine,
-    Notices,
-    More,
-    News,
-    SignIn,
-}
-
+/// A nav icon: on the phone's tab bar, hidden on wide screens. Plain SVG
+/// markup, so the CSP's ban on inline styles doesn't apply.
 fn icon(which: Icon) -> Element {
-    let path = match which {
-        Icon::Board => "M4 6h16M4 12h16M4 18h10",
-        Icon::Post => "M12 5v14M5 12h14",
-        Icon::Mine => "M7 3h7l4 4v14H7zM14 3v4h4",
-        Icon::Notices => "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",
-        Icon::More => "M5 12h.01M12 12h.01M19 12h.01",
-        Icon::News => "M4 5h13v14H6a2 2 0 0 1-2-2zM17 9h3v8a2 2 0 0 1-2 2M8 9h5M8 13h5",
-        Icon::SignIn => "M10 17l5-5-5-5M15 12H3M14 4h5v16h-5",
-    };
-    rsx! {
-        svg { class: "nav-icon", "viewBox": "0 0 24 24", "aria-hidden": "true",
-            "fill": "none", "stroke": "currentColor", "stroke-width": "2",
-            "stroke-linecap": "round", "stroke-linejoin": "round",
-            path { "d": "{path}" }
-        }
-    }
+    art::icon(which, "nav-icon")
 }
 
 /// One link in the main nav. `tab` links also sit in the phone's bottom tab
@@ -92,8 +67,8 @@ pub(crate) fn header(chrome: &Chrome) -> Element {
                     {nav_link(chrome, Nav::Board, "/", "Board", Some((Icon::Board, "Board")), (0, ""))}
                     if let Some(viewer) = &chrome.viewer {
                         {nav_link(chrome, Nav::Announcements, "/announcements", "Announcements", None, (0, ""))}
-                        {nav_link(chrome, Nav::Post, "/new", "Post a prompt", Some((Icon::Post, "Post")), (0, ""))}
-                        {nav_link(chrome, Nav::Mine, "/mine", "My prompts", Some((Icon::Mine, "Mine")), (0, ""))}
+                        {nav_link(chrome, Nav::Post, "/new", "Post a prompt", Some((Icon::PromptNew, "Post")), (0, ""))}
+                        {nav_link(chrome, Nav::Mine, "/mine", "My prompts", Some((Icon::MyPrompts, "Mine")), (0, ""))}
                         {nav_link(chrome, Nav::Personas, "/personas", "Personas", None, (0, ""))}
                         {nav_link(chrome, Nav::Settings, "/settings", "Settings", None, (0, ""))}
                         {nav_link(chrome, Nav::Notices, "/notices", "Notices",

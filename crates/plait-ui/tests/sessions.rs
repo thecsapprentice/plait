@@ -46,6 +46,7 @@ async fn with_a_session(sim: &Rc<Sim>) -> (Driver, String) {
     let id = sim.session_with(SERVER, "ink_fox", "wren", "The ledger");
     d.click("Sessions").await;
     d.wait_for_text("On “The ledger”").await;
+    assert!(!d.has_element_with_class("empty-sessions"));
     (d, id)
 }
 
@@ -55,6 +56,7 @@ async fn no_sessions_yet_says_how_one_starts() {
     let mut d = signed_in(&sim).await;
     d.click("Sessions").await;
     d.wait_for_text("No sessions yet.").await;
+    assert!(d.has_hidden_with_class("empty-sessions"), "an empty loom");
     d.click("Find a prompt on the Board").await;
     assert_eq!(d.heading().as_deref(), Some("Board"));
 }

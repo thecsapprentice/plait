@@ -6,6 +6,7 @@
 use std::rc::Rc;
 
 use dioxus::prelude::*;
+use plait_board_ui::art::{Illustration, illustration};
 use uuid::Uuid;
 
 use crate::{
@@ -113,6 +114,7 @@ pub fn SessionsPage() -> Element {
         if !s.loaded {
             p { class: "coming", "Loading sessions…" }
         } else if s.list.is_empty() {
+            {illustration(Illustration::EmptySessions)}
             p { class: "coming",
                 "No sessions yet. When a request to write together is accepted, the session starts here."
             }

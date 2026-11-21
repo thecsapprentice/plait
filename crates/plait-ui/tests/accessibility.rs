@@ -71,6 +71,31 @@ async fn first_run_and_the_frame() {
 }
 
 #[tokio::test]
+async fn every_nav_entry_has_an_icon_beside_its_label() {
+    let sim = Sim::new().with_server(SERVER).rc();
+    let d = first_run(&sim).await;
+    let entries = d.icons_and_labels("section");
+    let labels: Vec<&str> = entries.iter().map(|(l, _)| l.as_str()).collect();
+    assert_eq!(
+        labels,
+        [
+            "Home",
+            "Board",
+            "My prompts",
+            "Notices",
+            "Requests",
+            "Sessions",
+            "Personas",
+            "Settings"
+        ]
+    );
+    // The icon is decoration: the label is the entry's name.
+    for (label, icon) in &entries {
+        assert!(icon, "{label} has no hidden icon");
+    }
+}
+
+#[tokio::test]
 async fn the_board() {
     let sim = Sim::new().with_server(SERVER).rc();
     sim.fill_board(SERVER, 5);

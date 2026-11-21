@@ -52,6 +52,7 @@ async fn an_empty_board_says_so_and_offers_posting() {
     let sim = sim();
     let d = on_the_board(&sim).await;
     assert!(d.has_text("No prompts on the board yet."));
+    assert!(d.has_hidden_with_class("empty-board"), "the warp, waiting");
     assert!(d.has_button("Post a prompt"));
     assert!(d.has_text("Pick a prompt to read it here."));
 }
@@ -103,10 +104,17 @@ async fn searching_narrows_the_list_and_says_when_nothing_matches() {
     d.wait_until("the search", |d| !d.has_text("Prompt number 5"))
         .await;
     assert!(d.has_text("Prompt number 3"));
+    assert!(!d.has_element_with_class("illustration"));
     d.type_into("board-search", "zebra").await;
     d.wait_for_text("No prompts match").await;
+    assert!(d.has_hidden_with_class("no-results"), "a loose thread");
+    assert!(
+        !d.has_element_with_class("empty-board"),
+        "the board isn't empty"
+    );
     d.type_into("board-search", "").await;
     d.wait_for_text("Prompt number 5").await;
+    assert!(!d.has_element_with_class("illustration"));
 }
 
 /// Found by hand (3c): in a narrow window the page scrolls, not the list,

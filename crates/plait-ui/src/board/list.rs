@@ -3,6 +3,7 @@
 
 use dioxus::html::geometry::PixelsVector2D;
 use dioxus::prelude::*;
+use plait_board_ui::art::{Illustration, illustration};
 use plait_proto::board::Prompt;
 
 use super::{
@@ -280,8 +281,10 @@ fn BoardList() -> Element {
                         } else if mine && loaded && !next {
                             "You haven't posted a prompt yet."
                         } else if loaded && (count > 0 || searching) && !next {
+                            {illustration(Illustration::NoResults)}
                             "No prompts match. Try fewer filters, or another search."
                         } else if loaded && !next {
+                            {illustration(Illustration::EmptyBoard)}
                             "No prompts on the board yet."
                         }
                     }
