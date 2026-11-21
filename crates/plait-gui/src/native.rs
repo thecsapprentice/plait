@@ -175,10 +175,15 @@ fn problem(server: &str, e: CoreError) -> Problem {
             codes::BAD_ADDRESS,
             "That isn't a server address. It looks like writers.example or https://writers.example.",
         ),
-        _ => Problem::Failed {
-            code: e.code(),
-            detail: e.to_string(),
-        },
+        _ => {
+            // Shown only as "Something went wrong.", so say what it was where
+            // a developer or a bug report will see it (#103).
+            eprintln!("plait-gui: {}: {e:#}", e.code());
+            Problem::Failed {
+                code: e.code(),
+                detail: e.to_string(),
+            }
+        }
     }
 }
 
