@@ -59,6 +59,41 @@ async fn no_sessions_yet_says_how_one_starts() {
     assert_eq!(d.heading().as_deref(), Some("Board"));
 }
 
+/// Found investigating #103 (under load, in e2e): Home's "Open the session"
+/// clicked before the list had the session went nowhere. Opening marks the
+/// answer seen, which removes the note and its button, and the load it
+/// started was the button's, so it was cancelled with it.
+#[tokio::test]
+async fn opening_from_home_before_the_list_has_it_still_opens_it() {
+    let sim = sim();
+    let mut d = signed_in(&sim).await;
+    sim.post_as(
+        SERVER,
+        "wren",
+        "The ledger",
+        "A keeper's ledger.",
+        &[],
+        plait_proto::board::Maturity::General,
+    );
+    d.click("Board").await;
+    d.wait_for_text("The ledger").await;
+    d.click_containing("The ledger").await;
+    d.click("Ask to write together").await;
+    d.type_into("request-pitch", "I'd write the keeper.").await;
+    d.click("Send request").await;
+    d.wait_for_text("Request sent.").await;
+    let request = sim.requests_on(SERVER)[0].0;
+    // The list is slow to have it, as on a busy computer.
+    sim.hold_sessions();
+    d.click("Home").await;
+    sim.answer_request(SERVER, request, true);
+    d.wait_for_text("was accepted").await;
+    d.click("Open the session").await;
+    d.settle().await;
+    sim.release_sessions();
+    d.wait_for_text("Writing with @wren").await;
+}
+
 #[tokio::test]
 async fn an_accepted_request_becomes_a_session_that_opens_with_the_pitch() {
     let sim = sim();

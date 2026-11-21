@@ -242,7 +242,8 @@ pub fn OpenSession(
                 // Clicked before the list has it: read the list, then open
                 // the session, or the list if this computer hasn't it yet.
                 let (b, me, partner) = (backend.clone(), me.clone(), partner.clone());
-                spawn(async move {
+                dioxus::dioxus_core::spawn_forever(async move {
+                // The app's work, not this button's: `on_open` may remove it.
                     let server = model.peek().current;
                     if let Some(server) = server {
                         let _ = load(b.as_ref(), model, server).await;
