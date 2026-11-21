@@ -302,6 +302,7 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .card-band { position: absolute; inset: 0 0 auto 0; height: 6px; }
 .card-band svg { width: 100%; height: 100%; display: block; }
 /* One hero for each theme, as the theme blocks choose. */
+.hero-light { display: contents; }
 .hero-dark { display: none; }
 .plait[data-theme="dark"] .hero-light { display: none; }
 .plait[data-theme="dark"] .hero-dark { display: contents; }

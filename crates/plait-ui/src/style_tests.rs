@@ -311,6 +311,9 @@ fn one_welcome_hero_shows_for_each_theme() {
     let css = crate::STYLE;
     let has = |rule: &str| assert!(css.contains(rule), "missing `{rule}`");
     has(".hero-dark { display: none; }");
+    // Found by hand: the light one's wrapper took the SVG's own height
+    // (16:10), so the hero stopped part way down. Neither wrapper is a box.
+    has(".hero-light { display: contents; }");
     has(".plait[data-theme=\"dark\"] .hero-light { display: none; }");
     has(".plait[data-theme=\"dark\"] .hero-dark { display: contents; }");
     let system = &css[css
