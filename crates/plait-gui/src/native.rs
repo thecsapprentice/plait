@@ -175,10 +175,15 @@ fn problem(server: &str, e: CoreError) -> Problem {
             codes::BAD_ADDRESS,
             "That isn't a server address. It looks like writers.example or https://writers.example.",
         ),
-        _ => Problem::Failed {
-            code: e.code(),
-            detail: e.to_string(),
-        },
+        _ => {
+            // Shown only as "Something went wrong.", so say what it was where
+            // a developer or a bug report will see it (#103).
+            eprintln!("plait-gui: {}: {e:#}", e.code());
+            Problem::Failed {
+                code: e.code(),
+                detail: e.to_string(),
+            }
+        }
     }
 }
 
@@ -867,7 +872,14 @@ impl Backend for NativeBackend {
                     let vault = self.vault.clone().ok_or(Problem::NeedsPassphrase)?;
                     let store = self
                         .run(async move {
-                            Store::open(&path, Unlock::Keychain(vault.as_ref())).map_err(failed)
+                            Store::open(&path, Unlock::Keychain(vault.as_ref())).map_err(
+                                |e| match e {
+                                    // Held by work this process hasn't finished;
+                                    // upkeep opens it again shortly (#103).
+                                    StoreError::InUse => busy(),
+                                    e => failed(e),
+                                },
+                            )
                         })
                         .await?;
                     self.adopt(id, store)?;

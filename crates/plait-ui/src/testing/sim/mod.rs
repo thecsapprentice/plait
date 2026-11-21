@@ -110,6 +110,9 @@ struct Store {
     requests: requests::Here,
     /// How far each session's channels are shown here, and standings.
     sessions: sessions::Here,
+    /// Held elsewhere in this process (work from a window just closed), so
+    /// opening it fails as `StoreError::InUse` does (#103).
+    busy: bool,
 }
 
 #[derive(Debug)]
@@ -125,6 +128,9 @@ struct State {
     live: Rc<tokio::sync::Notify>,
     /// While set, loading the session list waits for it (a slow network).
     sessions_held: Option<Rc<tokio::sync::Notify>>,
+    /// The server whose store couldn't be opened, as native has no store
+    /// open then: `standing` fails until it's opened.
+    unopened: Option<Uuid>,
     settings: AppSettings,
 }
 
@@ -144,6 +150,16 @@ impl Default for Sim {
 }
 
 impl Sim {
+    /// Marks the store of the server at `domain` held elsewhere in this
+    /// process (`busy`), or free again.
+    pub fn store_busy(&self, domain: &str, busy: bool) {
+        let mut s = self.0.borrow_mut();
+        let addr = address(domain);
+        for store in s.stores.values_mut().filter(|st| st.address == addr) {
+            store.busy = busy;
+        }
+    }
+
     pub fn new() -> Self {
         Self(RefCell::new(State {
             servers: HashMap::new(),
@@ -154,6 +170,7 @@ impl Sim {
             clock: Rc::default(),
             live: Rc::default(),
             sessions_held: None,
+            unopened: None,
             settings: AppSettings {
                 theme: Theme::System,
                 text_size: 100,
@@ -458,6 +475,7 @@ impl Backend for Sim {
                     here: devices::Here::default(),
                     requests: requests::Here::default(),
                     sessions: sessions::Here::default(),
+                    busy: false,
                 },
             );
             s.current = Some(entry.id);
@@ -467,7 +485,17 @@ impl Backend for Sim {
     }
 
     fn open_server(&self, id: Uuid) -> Call<'_, Standing> {
-        self.0.borrow_mut().current = Some(id);
+        let mut s = self.0.borrow_mut();
+        s.current = Some(id);
+        if s.stores.get(&id).is_some_and(|st| st.busy) {
+            s.unopened = Some(id);
+            return now(Err(refused(
+                codes::STORE_BUSY,
+                "Plait is still using this server's store. Try again in a moment.",
+            )));
+        }
+        s.unopened = None;
+        drop(s);
         now(self.standing_now())
     }
 
@@ -537,6 +565,14 @@ impl Backend for Sim {
     }
 
     fn standing(&self) -> Call<'_, Standing> {
+        let s = self.0.borrow();
+        if s.unopened.is_some() && s.unopened == s.current {
+            return now(Err(Problem::Failed {
+                code: codes::UNCLASSIFIED,
+                detail: "no server is open".into(),
+            }));
+        }
+        drop(s);
         now(self.standing_now())
     }
 
