@@ -34,7 +34,8 @@ use plait_ui::backend::{
     SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
 };
 use plait_ui::backend::{
-    Draft, ErrorCode, NoteVersion, QueuedNote, SafetyNumbers, Sending, Verification,
+    Draft, ErrorCode, NoteFile, NoteVersion, QueuedNote, SHOWN_INLINE, SafetyNumbers, Sending,
+    Verification,
 };
 use tokio::runtime::Handle;
 use uuid::Uuid;
@@ -732,6 +733,39 @@ impl NativeBackend {
             })
             .await
         })
+    }
+}
+
+/// Where the app's own webview asks for an image on a note (`file_src`),
+/// answered by the window's asset handler from the store.
+pub const FILE_ROUTE: &str = "plait-file";
+
+/// A note's file, and whether this computer has it. Checking reads the
+/// file from the store; core keeps every attachment it fetched, so this is
+/// almost always yes (docs/plan.md, "Attachments in the app").
+fn note_file(store: &Store, a: &plait_core::attachments::Attachment) -> NoteFile {
+    NoteFile {
+        key: a.url.clone(),
+        name: a.name.clone(),
+        size: a.size,
+        media_type: a.media_type.clone(),
+        here: matches!(sessions::file(store, &a.url), Ok(Some(_))),
+    }
+}
+
+impl NativeBackend {
+    /// One of this computer's images, for the window's asset handler: its
+    /// bytes and type, from a path `file_src` made. Only the types shown on
+    /// notes are served, so nothing else reaches the webview this way.
+    pub fn image(&self, path: &str) -> Option<(zeroize::Zeroizing<Vec<u8>>, &'static str)> {
+        let (key, kind) = path.split_once('/')?;
+        let kind = SHOWN_INLINE
+            .iter()
+            .find(|t| t.strip_prefix("image/") == Some(kind))?;
+        let key = String::from_utf8(plait_proto::keys::unb64(key)?).ok()?;
+        let open = self.opened().ok()?;
+        let bytes = sessions::file(&open.store, &key).ok()??;
+        Some((bytes, kind))
     }
 }
 
@@ -1754,7 +1788,7 @@ impl Backend for NativeBackend {
                             edited: m.edited(),
                             reply_to: m.in_reply_to.as_deref().and_then(|r| by_id.get(r).copied()),
                             at: note_time(&m.hlc).unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
-                            attachments: m.attachments.len(),
+                            files: m.attachments.iter().map(|a| note_file(store, a)).collect(),
                         })
                         .collect::<Vec<_>>();
                     let latest = notes.last().map(|n| n.at);
@@ -1932,6 +1966,46 @@ impl Backend for NativeBackend {
             sessions::restore(&store, &client, &id, seq)
                 .await
                 .map(|_| ())
+        })
+    }
+
+    fn file_src(&self, file: &NoteFile) -> String {
+        let kind = file.media_type.strip_prefix("image/").unwrap_or("none");
+        format!(
+            "/{FILE_ROUTE}/{}/{kind}",
+            plait_proto::keys::b64(file.key.as_bytes())
+        )
+    }
+
+    fn choose_folder(&self) -> Call<'_, Option<String>> {
+        Box::pin(async move {
+            #[cfg(feature = "app")]
+            {
+                let picked = rfd::AsyncFileDialog::new()
+                    .set_title("Save attachments to")
+                    .pick_folder()
+                    .await;
+                Ok(picked.map(|f| f.path().display().to_string()))
+            }
+            #[cfg(not(feature = "app"))]
+            {
+                Ok(None)
+            }
+        })
+    }
+
+    fn save_files<'a>(&'a self, files: &'a [NoteFile], folder: &'a str) -> Call<'a, Vec<String>> {
+        let (files, folder) = (files.to_vec(), PathBuf::from(folder));
+        self.call_with_store(move |store, _| async move {
+            let mut saved = Vec::new();
+            for f in &files {
+                let Some(contents) = sessions::file(&store, &f.key)? else {
+                    continue;
+                };
+                let path = plait_core::attachments::save_to(&folder, &f.name, &contents)?;
+                saved.push(path.display().to_string());
+            }
+            Ok(saved)
         })
     }
 

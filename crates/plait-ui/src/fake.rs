@@ -377,6 +377,19 @@ impl Backend for Fake {
     fn restore_note<'a>(&'a self, _: &'a str, _: u64) -> Call<'a, ()> {
         ready(Ok(()))
     }
+    fn file_src(&self, _: &crate::backend::NoteFile) -> String {
+        String::new()
+    }
+    fn choose_folder(&self) -> Call<'_, Option<String>> {
+        ready(Ok(None))
+    }
+    fn save_files<'a>(
+        &'a self,
+        _: &'a [crate::backend::NoteFile],
+        _: &'a str,
+    ) -> Call<'a, Vec<String>> {
+        ready(Ok(Vec::new()))
+    }
     fn name_channel<'a>(&'a self, _: &'a str, _: &'a str, _: Option<&'a str>) -> Call<'a, ()> {
         ready(Ok(()))
     }

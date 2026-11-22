@@ -5,7 +5,7 @@ use std::{rc::Rc, sync::Arc};
 
 use dioxus::prelude::*;
 use plait_core::store::vault::{OsKeychain, Vault};
-use plait_gui::{NativeBackend, settings::Paths};
+use plait_gui::{NativeBackend, native::FILE_ROUTE, settings::Paths};
 use plait_ui::{App, STYLE, Ui};
 
 /// The app icon at 256px, for the window's title bar and the taskbar.
@@ -48,8 +48,10 @@ fn setup() -> anyhow::Result<(VirtualDom, dioxus_desktop::Config, tokio::runtime
     let backend =
         NativeBackend::new(paths, vault, runtime.handle().clone())?.with_utc_offset(offset);
 
+    let backend = Rc::new(backend);
     let dom = VirtualDom::new(Root);
-    dom.provide_root_context(Ui(Rc::new(backend)));
+    dom.provide_root_context(Ui(backend.clone()));
+    dom.provide_root_context(backend);
     // For development: tells apart windows started side by side
     // (`scripts/dev-gui.py --guis 2`).
     let title = match std::env::var(LABEL_ENV) {
@@ -81,11 +83,39 @@ fn window_icon() -> Option<dioxus_desktop::tao::window::Icon> {
     dioxus_desktop::icon_from_memory(ICON_PNG).ok()
 }
 
-/// The platform's part of the root: spellcheck, then plait-ui's app.
+/// The platform's part of the root: spellcheck, the images notes show,
+/// then plait-ui's app.
 #[component]
 fn Root() -> Element {
     use_hook(spellcheck);
+    let backend = use_context::<Rc<NativeBackend>>();
+    dioxus_desktop::use_asset_handler(FILE_ROUTE, move |request, responder| {
+        responder.respond(note_image(&backend, request.uri().path()));
+    });
     rsx! { App {} }
+}
+
+/// Answers the webview's request for an image on a note (3g-2): from the
+/// open server's store, as the type it was sent as, never sniffed as
+/// anything else, and never cached. Anything else is not found.
+fn note_image(backend: &NativeBackend, path: &str) -> dioxus_desktop::wry::http::Response<Vec<u8>> {
+    use dioxus_desktop::wry::http::{Response, StatusCode, header};
+    let rest = path
+        .trim_start_matches('/')
+        .strip_prefix(FILE_ROUTE)
+        .and_then(|p| p.strip_prefix('/'))
+        .unwrap_or("");
+    let built = match backend.image(rest) {
+        Some((bytes, kind)) => Response::builder()
+            .header(header::CONTENT_TYPE, kind)
+            .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(bytes.to_vec()),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Vec::new()),
+    };
+    built.unwrap_or_default()
 }
 
 /// WebKitGTK checks spelling only when asked, unlike WebView2 and

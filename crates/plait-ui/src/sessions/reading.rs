@@ -632,9 +632,9 @@ fn NoteItem(
             if history() {
                 History { id: id.clone(), seq, stamp: format!("{}{}{}", n.deleted, n.edited, n.content) }
             }
-            if n.attachments > 0 {
+            if !n.files.is_empty() {
                 p { class: "hint",
-                    if n.attachments == 1 { "1 attachment." } else { "{n.attachments} attachments." }
+                    if n.files.len() == 1 { "1 attachment." } else { "{n.files.len()} attachments." }
                 }
             }
         }

@@ -12,7 +12,7 @@ repository.workspace = true
 default = ["app"]
 # The window itself. Without it the crate is just the native backend, which
 # the end-to-end tests drive without a webview.
-app = ["dep:dioxus-desktop", "dep:webkit2gtk"]
+app = ["dep:dioxus-desktop", "dep:webkit2gtk", "dep:rfd"]
 
 [lib]
 path = "src/lib.rs"
@@ -38,6 +38,10 @@ time = { workspace = true, features = ["local-offset"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "time", "sync"] }
 uuid.workspace = true
 zeroize.workspace = true
+
+# The system's folder dialog, for saving attachments (3g-2): the build
+# dioxus-desktop already uses, so nothing new is linked.
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"], optional = true }
 
 # WebKitGTK checks spelling only when asked (3a); wry's version.
 [target.'cfg(target_os = "linux")'.dependencies]

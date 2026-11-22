@@ -497,8 +497,34 @@ pub struct Note {
     /// The number of the note it answers, if this computer has it.
     pub reply_to: Option<u64>,
     pub at: time::OffsetDateTime,
-    /// Files it carries (shown in 3g).
-    pub attachments: usize,
+    /// Files it carries, in the order attached.
+    pub files: Vec<NoteFile>,
+}
+
+/// A file a note carries (3g-2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteFile {
+    /// Where this computer keeps it: the attachment's URL.
+    pub key: String,
+    /// As the sender named it; made safe before saving.
+    pub name: String,
+    pub size: u64,
+    /// A label from the file name; nothing checked it.
+    pub media_type: String,
+    /// Whether this computer has the file. Each device fetches a note's
+    /// files as it reads the note, so one is missing only rarely.
+    pub here: bool,
+}
+
+/// The image types the app shows on a note. Anything else, SVG included,
+/// is saved only (decided 2026-11-21, `docs/roadmap.md`).
+pub const SHOWN_INLINE: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+impl NoteFile {
+    /// Shown as a picture on the note, rather than listed to save.
+    pub fn shown_inline(&self) -> bool {
+        self.here && SHOWN_INLINE.contains(&self.media_type.as_str())
+    }
 }
 
 /// One version of a note, oldest first.
@@ -770,6 +796,15 @@ pub trait Backend {
     fn delete_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
     /// Brings back one of the writer's deleted notes, as a new edit (#104).
     fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()>;
+    /// Where the webview reads one of this computer's images to show it on
+    /// a note: served from the encrypted store, never written to disk.
+    fn file_src(&self, file: &NoteFile) -> String;
+    /// Asks for a folder to save into, in the system's dialog. `None` when
+    /// the writer cancels, or there's no dialog to ask with.
+    fn choose_folder(&self) -> Call<'_, Option<String>>;
+    /// Saves files into `folder` under safe names, never overwriting.
+    /// Returns where each went; one not on this computer is skipped.
+    fn save_files<'a>(&'a self, files: &'a [NoteFile], folder: &'a str) -> Call<'a, Vec<String>>;
     /// The session's safety numbers. Fails with `KeyChanged` if the other
     /// writer's identity key changed since this computer pinned it.
     fn safety_numbers<'a>(&'a self, id: &'a str) -> Call<'a, SafetyNumbers>;
