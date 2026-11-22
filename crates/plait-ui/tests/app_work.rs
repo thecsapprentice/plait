@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use plait_ui::testing::{Driver, Sim};
+use plait_ui::testing::{Acceptance, Driver, Sim};
 
 const SERVER: &str = "writers.example";
 const OTHER: &str = "other.example";
@@ -119,4 +119,27 @@ async fn a_deleted_persona_goes_even_if_personas_closes_first() {
     sim.release_reply("delete_persona");
     d.wait_until("the persona gone", |d| !d.has_text("@ink_fox"))
         .await;
+}
+
+// ---- Rules ----------------------------------------------------------------------
+
+#[tokio::test]
+async fn accepted_rules_clear_the_banner_even_if_the_rules_close_first() {
+    let sim = Sim::new().with_server(SERVER).rc();
+    let d = signed_in(&sim).await;
+    drop(d);
+    sim.set_rules(SERVER, "# New rules\n\nBe kind.", Acceptance::OnChange);
+    let mut d = Driver::new(sim.clone());
+    d.wait_for_text("The server rules have changed").await;
+    d.click("Read the rules").await;
+    d.wait_for_text("writers.example's rules").await;
+    sim.hold_reply("accept_rules");
+    d.click("I accept the rules").await;
+    d.click("Home").await;
+    sim.release_reply("accept_rules");
+    d.wait_until("the banner gone", |d| {
+        !d.has_text("The server rules have changed")
+    })
+    .await;
+    assert_eq!(sim.accepted(SERVER, "ink"), 1);
 }
