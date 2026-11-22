@@ -371,7 +371,7 @@ mod tests {
         let q = queue_with_files(&store, GID, "story", "  ", None, files.clone()).unwrap();
         assert_eq!(q.files, ["cove.png", "notes.txt"]);
         assert_eq!(q.text, "");
-        assert_eq!(queued(&store, GID).unwrap(), [q.clone()]);
+        assert_eq!(queued(&store, GID).unwrap(), std::slice::from_ref(&q));
         assert_eq!(queued_files(&store, GID, &q).unwrap(), files);
         // Too many is refused before anything is kept.
         let many = vec![("x".to_owned(), vec![0u8]); sessions::MAX_FILES + 1];
