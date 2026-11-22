@@ -89,6 +89,9 @@ pub struct NativeBackend {
     link: Mutex<Option<String>>,
     /// This computer's offset from UTC, read at start (`with_utc_offset`).
     offset: time::UtcOffset,
+    /// The folder dialog's answer where there's no window to ask in
+    /// (`answer_folder_dialog_with`).
+    folder_answer: Option<PathBuf>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -409,6 +412,13 @@ impl NativeBackend {
         self
     }
 
+    /// Answers the folder dialog with `folder`, for tests that drive the
+    /// backend without a window (and so without a dialog).
+    pub fn answer_folder_dialog_with(mut self, folder: PathBuf) -> Self {
+        self.folder_answer = Some(folder);
+        self
+    }
+
     pub fn new(
         paths: Paths,
         vault: Option<Arc<dyn Vault>>,
@@ -426,6 +436,7 @@ impl NativeBackend {
             upkeep_log: Mutex::new(Vec::new()),
             link: Mutex::new(None),
             offset: time::UtcOffset::UTC,
+            folder_answer: None,
         })
     }
 
@@ -1979,6 +1990,9 @@ impl Backend for NativeBackend {
 
     fn choose_folder(&self) -> Call<'_, Option<String>> {
         Box::pin(async move {
+            if let Some(f) = &self.folder_answer {
+                return Ok(Some(f.display().to_string()));
+            }
             #[cfg(feature = "app")]
             {
                 let picked = rfd::AsyncFileDialog::new()

@@ -835,3 +835,90 @@ async fn requests_both_ways_on_a_real_server() {
     assert_eq!(ended, 1, "the night porter's session, for Wren too");
     server.stop().await.unwrap();
 }
+
+/// 3g-2: a writer's files arrive in the app over a real server. The image
+/// is served to the webview from the store, as its type, and nothing else
+/// is; a file is saved to the folder chosen, byte for byte.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_notes_files_are_shown_and_saved_from_a_real_server() {
+    use plait_core::{requests, sessions};
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (wren_c, wren, _, theirs) =
+        writer_with_prompt(&server, "wren", "The lighthouse ledger").await;
+    let dir = tempfile::tempdir().unwrap();
+    let saved = tempfile::tempdir().unwrap();
+    let vault: Arc<dyn Vault> = Arc::new(MemoryVault::default());
+    let backend = Rc::new(
+        NativeBackend::new(
+            Paths::in_dir(dir.path()),
+            Some(vault),
+            tokio::runtime::Handle::current(),
+        )
+        .unwrap()
+        .answer_folder_dialog_with(saved.path().to_path_buf()),
+    );
+    let mut d = Driver::new(backend.clone());
+    on_the_board(&mut d, &server).await;
+    d.wait_for_text("The lighthouse ledger").await;
+    d.click_containing("The lighthouse ledger").await;
+    d.click("Ask to write together").await;
+    d.type_into("request-pitch", "I'd write the keeper.").await;
+    d.click("Send request").await;
+    d.wait_for_text("Request sent.").await;
+    let inbox = requests::inbox(&wren, &wren_c, theirs, false)
+        .await
+        .unwrap();
+    requests::accept(&wren, &wren_c, inbox.requests[0].id)
+        .await
+        .unwrap();
+    let session = sessions::list(&wren, &wren_c).await.unwrap()[0]
+        .session
+        .id
+        .clone();
+    // A tiny real PNG, and a text file.
+    let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\x9cc\xf8\xff\xff?\0\x05\xfe\x02\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xaeB`\x82".to_vec();
+    sessions::post(
+        &wren,
+        &wren_c,
+        &session,
+        sessions::Draft {
+            text: "The cove, and my notes.",
+            channel: None,
+            reply_to: None,
+            files: vec![
+                ("cove.png".into(), png.clone()),
+                ("notes.txt".into(), b"the keeper's ledger".to_vec()),
+            ],
+        },
+    )
+    .await
+    .unwrap();
+
+    d.click("Home").await;
+    d.wait_until("word of the note", |d| {
+        d.has_button("Read the session with @wren_pen on “The lighthouse ledger”")
+    })
+    .await;
+    d.click("Read the session with @wren_pen on “The lighthouse ledger”")
+        .await;
+    d.wait_for_text("The cove, and my notes.").await;
+    let src = d.image_src("cove.png").expect("the image on the note");
+    let path = src
+        .strip_prefix("/plait-file/")
+        .expect("the app's own route");
+    let (bytes, kind) = backend.image(path).expect("served from the store");
+    assert_eq!((bytes.as_slice(), kind), (png.as_slice(), "image/png"));
+    // Only the image types notes show are served: not the text file.
+    let txt = path.replace("/png", "/plain");
+    assert!(backend.image(&txt).is_none());
+
+    d.click("Save notes.txt").await;
+    d.wait_for_text("Saved to").await;
+    assert_eq!(
+        std::fs::read(saved.path().join("notes.txt")).unwrap(),
+        b"the keeper's ledger"
+    );
+    server.stop().await.unwrap();
+}
