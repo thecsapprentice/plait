@@ -6,7 +6,7 @@ use plait_proto::board::Maturity;
 use uuid::Uuid;
 
 use crate::{
-    app::{ProblemLine, open_server, use_ui},
+    app::{ProblemLine, app_task, if_shown, open_server, use_ui},
     backend::{AppSettings, BoardSettings, Details, Problem, Protection, ServerEntry, Theme},
     checks,
     field::{Field, Kind},
@@ -255,9 +255,9 @@ fn ServerItem(server: ServerEntry) -> Element {
     let remove = move |_| {
         busy.set(true);
         let b = b.clone();
-        spawn(async move {
+        app_task(async move {
             let result = b.remove_server(id).await;
-            busy.set(false);
+            if_shown(busy, false);
             match result {
                 Ok(()) => {
                     let next: Option<Uuid> = model.write().removed(&*b, id);
@@ -265,7 +265,7 @@ fn ServerItem(server: ServerEntry) -> Element {
                         open_server(b.clone(), model, next);
                     }
                 }
-                Err(p) => problem.set(Some(p)),
+                Err(p) => if_shown(problem, Some(p)),
             }
         });
     };
@@ -430,9 +430,9 @@ fn SignOutFieldset() -> Element {
     let sign_out = move |_| {
         busy.set(true);
         let b = backend.clone();
-        spawn(async move {
+        app_task(async move {
             let result = b.sign_out().await;
-            busy.set(false);
+            if_shown(busy, false);
             match result {
                 Ok(()) => model.write().signed_out(),
                 Err(p) => model.write().problem = Some(p),
@@ -456,7 +456,7 @@ fn AdvancedFieldset() -> Element {
     let settings = model.read().settings.clone();
     let mut folder = use_signal(|| settings.stores_folder.clone());
     let mut busy = use_signal(|| false);
-    let mut problem = use_signal(|| None::<Problem>);
+    let problem = use_signal(|| None::<Problem>);
     let mut moved = use_signal(|| false);
 
     let b = backend.clone();
@@ -480,16 +480,17 @@ fn AdvancedFieldset() -> Element {
         moved.set(false);
         let b = b.clone();
         let mut model = model;
-        spawn(async move {
-            let result = b.move_stores(&folder()).await;
-            busy.set(false);
+        let to = folder();
+        app_task(async move {
+            let result = b.move_stores(&to).await;
+            if_shown(busy, false);
             match result {
                 Ok(()) => {
-                    moved.set(true);
-                    problem.set(None);
+                    if_shown(moved, true);
+                    if_shown(problem, None);
                     model.write().settings_changed(b.app_settings());
                 }
-                Err(p) => problem.set(Some(p)),
+                Err(p) => if_shown(problem, Some(p)),
             }
         });
     });
