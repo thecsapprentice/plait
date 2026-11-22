@@ -22,6 +22,7 @@ mod requests;
 mod server_rules;
 mod sessions;
 mod settings;
+mod storage;
 #[cfg(test)]
 mod style_tests;
 #[cfg(feature = "testing")]

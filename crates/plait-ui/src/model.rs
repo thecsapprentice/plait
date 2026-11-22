@@ -55,6 +55,8 @@ pub enum Section {
     Rules,
     /// The login's devices: reached from Settings, not the sidebar.
     Devices,
+    /// What the login's sessions take on the server: reached from Settings.
+    Storage,
     /// The design reference: reached from Settings in advanced mode.
     Reference,
 }
@@ -83,6 +85,7 @@ impl Section {
             Section::Settings => "Settings",
             Section::Rules => "Server rules",
             Section::Devices => "Devices",
+            Section::Storage => "Storage",
             Section::Reference => "Design reference",
         }
     }
@@ -100,6 +103,7 @@ impl Section {
             Section::Settings => Icon::Settings,
             Section::Rules => Icon::Rules,
             Section::Devices => Icon::Devices,
+            Section::Storage => Icon::Server,
             Section::Reference => Icon::Story,
         }
     }

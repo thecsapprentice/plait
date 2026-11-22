@@ -89,6 +89,31 @@ async fn first_run_against_a_real_server() {
     server.stop().await.unwrap();
 }
 
+/// 3g-1: the Storage view reads `GET /account/storage` from a real server.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn storage_use_against_a_real_server() {
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Arc::new(MemoryVault::default());
+    let mut d = app(dir.path(), &vault);
+    to_sign_up(&mut d, &server).await;
+    d.type_into("login-name", "ink").await;
+    d.type_into("login-password", PASSWORD).await;
+    d.click("Make my login").await;
+    d.wait_for_text("Make your first persona").await;
+    d.type_into("persona-handle", "ink_fox").await;
+    d.click("Make this persona").await;
+    d.wait_for_text("Hello, @ink_fox").await;
+    d.click("Settings").await;
+    d.click("See storage use").await;
+    d.wait_for_text("Attachments you uploaded").await;
+    assert!(d.has_text("0 bytes of 500 MB"));
+    assert!(d.has_text("No sessions yet, so nothing stored for them."));
+    server.stop().await.unwrap();
+}
+
 /// #103: the app opened while this process still held the server's store
 /// (work from a window just closed, still running) said "Something went
 /// wrong." and stayed stuck. It says the store is busy, and opens it once

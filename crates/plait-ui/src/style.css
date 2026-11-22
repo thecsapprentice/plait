@@ -248,6 +248,22 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .item p { margin: var(--space-1) 0 0; }
 .item .actions { margin-top: var(--space-2); }
 
+/* ---- Storage (3g-1) ---- */
+.storage-quota { margin-top: 0; }
+.storage-quota .quota-line { margin: 0 0 var(--space-2); font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+/* The allowance bar in the theme's colours: the accent while there's room,
+   warn from nearly full (the meter's "high" mark). WebKit and WebView2 both
+   style it through these pseudo-elements. */
+.storage-quota meter { display: block; width: 100%; height: 0.75rem; appearance: none; background: none; }
+.storage-quota meter::-webkit-meter-bar { background: var(--accent-soft); border: 1px solid var(--line); border-radius: var(--radius-pill); height: 0.75rem; }
+.storage-quota meter::-webkit-meter-optimum-value { background: var(--accent); border-radius: var(--radius-pill); }
+.storage-quota meter::-webkit-meter-suboptimum-value,
+.storage-quota meter::-webkit-meter-even-less-good-value { background: var(--warn); border-radius: var(--radius-pill); }
+.storage-quota .hint { margin-top: var(--space-2); }
+.storage-totals { display: grid; grid-template-columns: max-content auto; gap: var(--space-1) var(--space-4); margin: var(--space-5) 0; max-width: var(--width-read); }
+.storage-totals dt { color: var(--muted); }
+.storage-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+
 /* ---- Telling people things ---- */
 .nudge { display: flex; gap: var(--space-3); align-items: center; background: var(--accent-soft); border-radius: var(--radius-m); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-5); flex-wrap: wrap; }
 .nudge p { margin: 0; flex: 1; min-width: 12rem; }
