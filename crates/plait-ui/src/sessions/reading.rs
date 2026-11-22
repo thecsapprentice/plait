@@ -632,10 +632,9 @@ fn NoteItem(
             if history() {
                 History { id: id.clone(), seq, stamp: format!("{}{}{}", n.deleted, n.edited, n.content) }
             }
-            if !n.files.is_empty() {
-                p { class: "hint",
-                    if n.files.len() == 1 { "1 attachment." } else { "{n.files.len()} attachments." }
-                }
+            // A deleted note's files go with its text; its history keeps them.
+            if !n.files.is_empty() && !n.deleted {
+                super::files::NoteFiles { files: n.files.clone() }
             }
         }
     }

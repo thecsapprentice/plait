@@ -18,6 +18,7 @@ use crate::{
 mod changing;
 mod channels;
 mod compose;
+mod files;
 pub(crate) mod live;
 mod reading;
 mod safety;
