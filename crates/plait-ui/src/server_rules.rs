@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    app::{ProblemLine, use_ui},
+    app::{ProblemLine, app_task, if_shown, use_ui},
     backend::{Problem, ServerRules},
     markdown::Markdown,
 };
@@ -14,8 +14,8 @@ use crate::{
 pub fn RulesPage() -> Element {
     let (backend, mut model) = use_ui();
     let mut busy = use_signal(|| false);
-    let mut problem = use_signal(|| None::<Problem>);
-    let mut accepted = use_signal(|| false);
+    let problem = use_signal(|| None::<Problem>);
+    let accepted = use_signal(|| false);
     let (name, rules) = {
         let m = model.read();
         (m.server_name(), m.rules.clone())
@@ -37,18 +37,18 @@ pub fn RulesPage() -> Element {
     let accept = use_callback(move |version: u32| {
         busy.set(true);
         let b = b.clone();
-        spawn(async move {
+        app_task(async move {
             let result = b.accept_rules(version).await;
-            busy.set(false);
+            if_shown(busy, false);
             let id = model.peek().current;
             match result {
                 Ok(()) => {
-                    problem.set(None);
-                    accepted.set(true);
+                    if_shown(problem, None);
+                    if_shown(accepted, true);
                     model.write().rules_accepted();
                 }
                 Err(p) => {
-                    problem.set(Some(p));
+                    if_shown(problem, Some(p));
                     // Changed again: show the new version.
                     if let Some(id) = id {
                         let fresh = b.rules().await;

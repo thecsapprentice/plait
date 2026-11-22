@@ -38,12 +38,13 @@ pub async fn load(b: &dyn Backend, mut model: Signal<Model>, server: Uuid) -> Re
 }
 
 /// Loads in the background, saying nothing if it fails: the screen keeps
-/// what it had, and upkeep tries again.
+/// what it had, and upkeep tries again. The app's work, not the caller's:
+/// the queue or form that asks for it may close first (#111).
 pub fn reload(b: Rc<dyn Backend>, model: Signal<Model>) {
     let Some(server) = model.peek().current else {
         return;
     };
-    spawn(async move {
+    dioxus::dioxus_core::spawn_forever(async move {
         let _ = load(b.as_ref(), model, server).await;
     });
 }

@@ -28,6 +28,22 @@ pub fn use_ui() -> (Rc<dyn Backend>, Signal<Model>) {
     (use_context::<Ui>().0, use_context::<Signal<Model>>())
 }
 
+/// Starts work that belongs to the app, not to the screen that asks: it
+/// finishes even if that screen closes first, so a server's answer always
+/// reaches the model (#111). It writes the screen's own state only
+/// through `if_shown`.
+pub fn app_task(work: impl std::future::Future<Output = ()> + 'static) {
+    dioxus::dioxus_core::spawn_forever(work);
+}
+
+/// Sets a screen's own signal, if the screen is still there: once it has
+/// closed, nobody is left to tell (`app_task`).
+pub fn if_shown<T: 'static>(mut signal: Signal<T>, value: T) {
+    if let Ok(mut s) = signal.try_write() {
+        *s = value;
+    }
+}
+
 /// Opens server `id`: the frame stays up and fills in when it's open.
 /// The work belongs to the app, not the caller: the screen that asked
 /// (Cancel on adding a server, say) is usually gone before it finishes.

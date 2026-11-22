@@ -128,6 +128,9 @@ struct State {
     live: Rc<tokio::sync::Notify>,
     /// While set, loading the session list waits for it (a slow network).
     sessions_held: Option<Rc<tokio::sync::Notify>>,
+    requests_held: Option<Rc<tokio::sync::Notify>>,
+    /// Calls whose reply waits (`hold_reply`), by backend method name.
+    replies_held: std::collections::HashMap<&'static str, Rc<tokio::sync::Notify>>,
     /// The server whose store couldn't be opened, as native has no store
     /// open then: `standing` fails until it's opened.
     unopened: Option<Uuid>,
@@ -170,6 +173,8 @@ impl Sim {
             clock: Rc::default(),
             live: Rc::default(),
             sessions_held: None,
+            requests_held: None,
+            replies_held: Default::default(),
             unopened: None,
             settings: AppSettings {
                 theme: Theme::System,
@@ -210,6 +215,47 @@ impl Sim {
         if let Some(n) = self.0.borrow_mut().sessions_held.take() {
             n.notify_waiters();
         }
+    }
+
+    /// Loading the requests lists (waiting and sent) waits from now until
+    /// `release_requests`, as on a slow network.
+    pub fn hold_requests(&self) {
+        self.0.borrow_mut().requests_held = Some(Rc::default());
+    }
+
+    /// Requests lists held by `hold_requests` arrive, and later ones don't wait.
+    pub fn release_requests(&self) {
+        if let Some(n) = self.0.borrow_mut().requests_held.take() {
+            n.notify_waiters();
+        }
+    }
+
+    /// From now, the backend call `method` (`"sign_out"`, say) takes effect
+    /// at once, but its reply waits until `release_reply`: a slow network,
+    /// where the server has acted and the app hasn't heard yet.
+    pub fn hold_reply(&self, method: &'static str) {
+        self.0
+            .borrow_mut()
+            .replies_held
+            .insert(method, Rc::default());
+    }
+
+    /// Replies held by `hold_reply` for `method` arrive; later ones don't wait.
+    pub fn release_reply(&self, method: &'static str) {
+        if let Some(n) = self.0.borrow_mut().replies_held.remove(method) {
+            n.notify_waiters();
+        }
+    }
+
+    /// `result`, after any hold on `method`'s reply.
+    fn reply<'a, T: 'a>(&'a self, method: &'static str, result: Result<T, Problem>) -> Call<'a, T> {
+        let held = self.0.borrow().replies_held.get(method).cloned();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            result
+        })
     }
 
     /// Every wait of a minute or more (periodic checks, upkeep) ends now,
@@ -517,13 +563,15 @@ impl Backend for Sim {
     }
 
     fn remove_server(&self, id: Uuid) -> Call<'_, ()> {
-        let mut s = self.0.borrow_mut();
-        s.entries.retain(|e| e.id != id);
-        s.stores.remove(&id);
-        if s.current == Some(id) {
-            s.current = None;
+        {
+            let mut s = self.0.borrow_mut();
+            s.entries.retain(|e| e.id != id);
+            s.stores.remove(&id);
+            if s.current == Some(id) {
+                s.current = None;
+            }
         }
-        now(Ok(()))
+        self.reply("remove_server", Ok(()))
     }
 
     fn rename_server(&self, id: Uuid, name: &str) -> Result<(), Problem> {
@@ -663,7 +711,7 @@ impl Backend for Sim {
 
     fn sign_out(&self) -> Call<'_, ()> {
         self.with_server_mut(|_, store| store.signed_in = false);
-        now(Ok(()))
+        self.reply("sign_out", Ok(()))
     }
 
     fn rules(&self) -> Call<'_, Option<ServerRules>> {
@@ -694,7 +742,7 @@ impl Backend for Sim {
 
     fn accept_rules(&self, version: u32) -> Call<'_, ()> {
         if let Err(p) = self.reach() {
-            return now(Err(p));
+            return self.reply("accept_rules", Err(p));
         }
         let result = self.with_server_mut(|server, store| {
             let current = server.rules.as_ref().map_or(0, |(_, v)| *v);
@@ -710,7 +758,7 @@ impl Backend for Sim {
             }
             Ok(())
         });
-        now(result)
+        self.reply("accept_rules", result)
     }
 
     fn create_persona<'a>(&'a self, handle: &'a str, display_name: &'a str) -> Call<'a, Persona> {
@@ -748,12 +796,12 @@ impl Backend for Sim {
             p.summary = Some(summary.trim().to_owned()).filter(|d| !d.is_empty());
             Ok(p.clone())
         });
-        now(result)
+        self.reply("update_persona", result)
     }
 
     fn delete_persona(&self, id: Uuid) -> Call<'_, ()> {
         self.with_server_mut(|server, _| server.personas.retain(|(_, p, _)| p.id != id));
-        now(Ok(()))
+        self.reply("delete_persona", Ok(()))
     }
 
     fn prepare<'a>(&'a self, persona: Uuid, progress: &'a dyn Fn(Step)) -> Call<'a, ()> {
@@ -829,7 +877,10 @@ impl Backend for Sim {
     }
 
     fn finish_link(&self) -> Call<'_, Standing> {
-        now(self.sim_finish_link().and_then(|()| self.standing_now()))
+        self.reply(
+            "finish_link",
+            self.sim_finish_link().and_then(|()| self.standing_now()),
+        )
     }
 
     fn abandon_link(&self) -> Result<(), Problem> {
@@ -896,7 +947,13 @@ impl Backend for Sim {
     }
 
     fn sent_requests(&self) -> Call<'_, Vec<crate::backend::SentRequest>> {
-        now(self.sim_sent_requests())
+        let held = self.0.borrow().requests_held.clone();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            now(self.sim_sent_requests()).await
+        })
     }
 
     fn withdraw_request(&self, id: Uuid) -> Call<'_, ()> {
@@ -904,7 +961,13 @@ impl Backend for Sim {
     }
 
     fn waiting_requests(&self) -> Call<'_, Vec<crate::backend::WaitingPrompt>> {
-        now(self.sim_waiting())
+        let held = self.0.borrow().requests_held.clone();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            now(self.sim_waiting()).await
+        })
     }
 
     fn inbox(&self, prompt: Uuid, held: bool) -> Call<'_, crate::backend::Inbox> {
@@ -1157,10 +1220,13 @@ impl Backend for Sim {
     }
 
     fn mark_notices_read(&self) -> Call<'_, ()> {
-        now(self.writing(|server, login| {
-            server.read_notices(login);
-            Ok(())
-        }))
+        self.reply(
+            "mark_notices_read",
+            self.writing(|server, login| {
+                server.read_notices(login);
+                Ok(())
+            }),
+        )
     }
 
     fn app_settings(&self) -> AppSettings {
@@ -1174,7 +1240,7 @@ impl Backend for Sim {
 
     fn move_stores<'a>(&'a self, folder: &'a str) -> Call<'a, ()> {
         self.0.borrow_mut().settings.stores_folder = folder.trim().into();
-        now(Ok(()))
+        self.reply("move_stores", Ok(()))
     }
 
     fn details(&self) -> Call<'_, Details> {
