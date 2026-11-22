@@ -8,6 +8,7 @@
 
 use std::rc::Rc;
 
+use plait_proto::notices::{NoticeFields, NoticeKind};
 use plait_ui::testing::{Acceptance, Driver, Sim};
 
 const SERVER: &str = "writers.example";
@@ -142,4 +143,31 @@ async fn accepted_rules_clear_the_banner_even_if_the_rules_close_first() {
     })
     .await;
     assert_eq!(sim.accepted(SERVER, "ink"), 1);
+}
+
+// ---- Notices --------------------------------------------------------------------
+
+#[tokio::test]
+async fn read_notices_clear_the_count_even_if_notices_closes_first() {
+    let sim = Sim::new().with_server(SERVER).rc();
+    sim.notify(
+        SERVER,
+        "ink",
+        NoticeKind::TagRejected,
+        NoticeFields {
+            tag: Some("theme:Moonlite".into()),
+            ..NoticeFields::default()
+        },
+        &[],
+    );
+    let mut d = signed_in(&sim).await;
+    d.wait_until("the count", |d| d.has_button("Notices 1 unread"))
+        .await;
+    sim.hold_reply("mark_notices_read");
+    d.click("Notices 1 unread").await;
+    d.wait_for_text("wasn't approved").await;
+    d.click("Home").await;
+    sim.release_reply("mark_notices_read");
+    d.wait_until("the count cleared", |d| d.has_button("Notices"))
+        .await;
 }

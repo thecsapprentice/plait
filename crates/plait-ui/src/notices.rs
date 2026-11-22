@@ -5,11 +5,13 @@ use dioxus::prelude::*;
 use plait_proto::notices::AccountNotice;
 use uuid::Uuid;
 
+use std::rc::Rc;
+
 use crate::{
-    app::{ProblemLine, use_ui},
-    backend::Problem,
+    app::{ProblemLine, app_task, use_ui},
+    backend::{Backend, Problem},
     board::MineState,
-    model::Section,
+    model::{Model, Section},
 };
 
 /// Notices per page, as the server sends when none is asked for.
@@ -17,7 +19,7 @@ const PAGE: usize = 50;
 
 #[component]
 pub fn NoticesPage() -> Element {
-    let (backend, mut model) = use_ui();
+    let (backend, model) = use_ui();
     let mut list = use_signal(|| None::<Vec<AccountNotice>>);
     let mut older = use_signal(|| false);
     let mut busy = use_signal(|| false);
@@ -36,12 +38,8 @@ pub fn NoticesPage() -> Element {
                     older.set(page.len() == PAGE);
                     let fresh = page.iter().any(|n| !n.read);
                     list.with_mut(|l| l.get_or_insert_with(Vec::new).extend(page));
-                    // Seen now: the server and the nav count agree.
-                    if fresh && b.mark_notices_read().await.is_ok() {
-                        let id = model.peek().current;
-                        if let Some(id) = id {
-                            model.write().unread_loaded(id, 0);
-                        }
+                    if fresh {
+                        mark_read(b, model);
                     }
                 }
                 Err(p) => problem.set(Some(p)),
@@ -136,4 +134,17 @@ fn Notice(notice: AccountNotice) -> Element {
             }
         }
     }
+}
+
+/// Seen now: the server and the nav count agree. The app's work, so the
+/// count clears even if the writer has already left Notices (#111).
+fn mark_read(b: Rc<dyn Backend>, mut model: Signal<Model>) {
+    app_task(async move {
+        if b.mark_notices_read().await.is_ok() {
+            let id = model.peek().current;
+            if let Some(id) = id {
+                model.write().unread_loaded(id, 0);
+            }
+        }
+    });
 }
