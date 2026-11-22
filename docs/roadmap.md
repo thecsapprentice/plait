@@ -1136,8 +1136,8 @@ part of its "done when".
 | 3c | [#26](https://github.com/thecsapprentice/plait/issues/26) The board in the GUI: browse, search, post and edit prompts, through the board's shared components | done (#67) |
 | 3d | [#27](https://github.com/thecsapprentice/plait/issues/27) Keys and devices: identity keys, linking by QR code or words, the device list, revoking, safety numbers | done (#68, #78) |
 | 3e | [#28](https://github.com/thecsapprentice/plait/issues/28) Requests: sending with a pitch, the inbox, accepting and declining, status, the changed-key stop, and comparing words before a session ([#72](https://github.com/thecsapprentice/plait/issues/72)) | done (#73, #78) |
-| 3f | [#29](https://github.com/thecsapprentice/plait/issues/29) Sessions: the session list, reading and writing, channels, replies, edits and deletions with their history, live updates | planned |
-| 3g | [#30](https://github.com/thecsapprentice/plait/issues/30) Attachments: attaching, opening and saving files; images shown inline, with metadata stripped before sending (deferred from 2i); storage use | planned |
+| 3f | [#29](https://github.com/thecsapprentice/plait/issues/29) Sessions: the session list, reading and writing, channels, replies, edits and deletions with their history, live updates | done |
+| 3g | [#30](https://github.com/thecsapprentice/plait/issues/30) Attachments: attaching, saving and seeing files; images shown inline, cleaned before sending (deferred from 2i); storage use. Steps: [#118](https://github.com/thecsapprentice/plait/issues/118) storage use, [#119](https://github.com/thecsapprentice/plait/issues/119) saving and seeing, [#120](https://github.com/thecsapprentice/plait/issues/120) attaching, [#121](https://github.com/thecsapprentice/plait/issues/121) cleaning images | in progress |
 | 3h | [#31](https://github.com/thecsapprentice/plait/issues/31) Backup and recovery, history sync and rejoining, notices; anything the CLI does that the GUI doesn't yet | planned |
 | 3i | [#32](https://github.com/thecsapprentice/plait/issues/32) Packaging for Windows, macOS and Linux | planned |
 
@@ -1316,6 +1316,16 @@ ranges. Known so far:
 
 ## Decisions
 
+- **3g, attachments in the app (decided 2026-11-21):** images show in the
+  app; every other received file is saved only, never handed to another
+  app by Plait, since it came from another writer and could be anything.
+  Before sending, still images are decoded and re-encoded as lossy WebP
+  (adding libwebp, vetted), which drops metadata and anything else hidden
+  in the file. Animated GIFs are re-encoded frame by frame as a clean GIF,
+  so they still play (MP4 would need an H.264 encoder, and Linux webviews
+  can't be relied on to play it). An image the app can't clean is never
+  sent silently: the writer is warned, and chooses to send it as a plain
+  file or remove it.
 - **#43, automated moderation (decided 2026-10-26): Rhai, with default
   templates and common data.** The spike ran the same scripts in rule files,
   Rhai, Luau, Starlark and JavaScript; Rhai stopped every hostile script with
