@@ -87,3 +87,36 @@ async fn moved_stores_show_their_new_folder_even_if_settings_closes_first() {
         Some("/elsewhere")
     );
 }
+
+// ---- Personas -------------------------------------------------------------------
+
+#[tokio::test]
+async fn an_edited_persona_shows_its_new_name_even_if_personas_closes_first() {
+    let sim = Sim::new().with_server(SERVER).rc();
+    let mut d = signed_in(&sim).await;
+    d.click("Personas").await;
+    d.click("Edit").await;
+    let display = d.field_id_with_prefix("display-");
+    d.type_into(&display, "Ink Fox").await;
+    sim.hold_reply("update_persona");
+    d.click("Save").await;
+    d.click("Home").await;
+    sim.release_reply("update_persona");
+    d.settle().await;
+    d.click("Personas").await;
+    d.wait_for_text("Ink Fox @ink_fox").await;
+}
+
+#[tokio::test]
+async fn a_deleted_persona_goes_even_if_personas_closes_first() {
+    let sim = Sim::new().with_server(SERVER).rc();
+    let mut d = signed_in(&sim).await;
+    d.click("Personas").await;
+    sim.hold_reply("delete_persona");
+    d.click("Delete…").await;
+    d.click("Delete @ink_fox").await;
+    d.click("Home").await;
+    sim.release_reply("delete_persona");
+    d.wait_until("the persona gone", |d| !d.has_text("@ink_fox"))
+        .await;
+}

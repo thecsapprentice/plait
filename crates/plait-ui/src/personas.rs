@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::{
-    app::{ProblemLine, use_ui},
+    app::{ProblemLine, app_task, if_shown, use_ui},
     backend::{Keys, PersonaState, Problem},
     checks,
     field::{Area, Field, Kind},
@@ -72,7 +72,7 @@ fn PersonaItem(state: PersonaState) -> Element {
     let mut display = use_signal(|| state.persona.display_name.clone().unwrap_or_default());
     let mut summary = use_signal(|| state.persona.summary.clone().unwrap_or_default());
     let mut busy = use_signal(|| false);
-    let mut problem = use_signal(|| None::<Problem>);
+    let problem = use_signal(|| None::<Problem>);
     let (in_use, advanced) = {
         let m = model.read();
         (m.persona == Some(state.persona.id), m.settings.advanced)
@@ -89,16 +89,17 @@ fn PersonaItem(state: PersonaState) -> Element {
         }
         busy.set(true);
         let b = b.clone();
-        spawn(async move {
-            let result = b.update_persona(id, &display(), &summary()).await;
-            busy.set(false);
+        let (to_display, to_summary) = (display(), summary());
+        app_task(async move {
+            let result = b.update_persona(id, &to_display, &to_summary).await;
+            if_shown(busy, false);
             match result {
                 Ok(p) => {
-                    mode.set(Mode::Showing);
-                    problem.set(None);
+                    if_shown(mode, Mode::Showing);
+                    if_shown(problem, None);
                     model.write().persona_updated(p);
                 }
-                Err(e) => problem.set(Some(e)),
+                Err(e) => if_shown(problem, Some(e)),
             }
         });
     };
@@ -106,12 +107,12 @@ fn PersonaItem(state: PersonaState) -> Element {
     let delete = move |_| {
         busy.set(true);
         let b = b.clone();
-        spawn(async move {
+        app_task(async move {
             let result = b.delete_persona(id).await;
-            busy.set(false);
+            if_shown(busy, false);
             match result {
                 Ok(()) => model.write().persona_deleted(id),
-                Err(e) => problem.set(Some(e)),
+                Err(e) => if_shown(problem, Some(e)),
             }
         });
     };
