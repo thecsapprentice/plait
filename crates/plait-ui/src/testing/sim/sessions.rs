@@ -10,6 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use plait_proto::sessions::{AccountStorage, SessionStorage};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -21,6 +22,12 @@ use crate::backend::{
 
 /// The channels every session has.
 const DEFAULT_CHANNELS: [&str; 2] = ["story", "planning"];
+/// What encrypting a message adds to its text, roughly.
+const MESSAGE_OVERHEAD: u64 = 256;
+/// A login's attachment quota, as the server's default (2i).
+const QUOTA_BYTES: u64 = 500 * 1024 * 1024;
+/// The device group's log, fixed here.
+const DEVICE_SYNC_BYTES: u64 = 24 * 1024;
 
 #[derive(Debug, Clone)]
 pub(super) struct SimNote {
@@ -72,6 +79,8 @@ pub(super) struct SimSession {
     channels: Vec<(String, Option<String>)>,
     ended: bool,
     seq: u64,
+    /// Attachments on the server: the uploader's login and the padded size.
+    files: Vec<(String, u64)>,
 }
 
 /// One server's sessions.
@@ -118,6 +127,7 @@ impl SimServer {
             channels: Vec::new(),
             ended: false,
             seq: 0,
+            files: Vec::new(),
         };
         s.write(&requester.1, "planning", pitch, None);
         self.sessions.all.push(s);
@@ -202,6 +212,64 @@ impl Sim {
         });
         self.live();
         id
+    }
+
+    /// `handle` uploaded an attachment of `bytes` (padded) to session `id`:
+    /// it counts in the session's storage, and against that login's quota.
+    pub fn uploaded(&self, domain: &str, id: &str, handle: &str, bytes: u64) {
+        let login = self.login_of(domain, handle);
+        self.server(domain, |s| s.session_mut(id).files.push((login, bytes)));
+    }
+
+    /// What the signed-in login's sessions take, as `GET /account/storage`
+    /// counts it: each stored version is a message, sized with its text
+    /// plus what encryption adds.
+    pub(super) fn sim_storage(&self) -> Result<AccountStorage, Problem> {
+        let (login, server) = self.signed_in()?;
+        let mut sessions = Vec::new();
+        for s in &server.sessions.all {
+            let Some((_, mine)) = s.mine(&login) else {
+                continue;
+            };
+            let partner = s
+                .members
+                .iter()
+                .find(|(l, _)| *l != login)
+                .map(|(_, h)| h.clone());
+            let versions = s.notes.iter().flat_map(|n| &n.versions);
+            let message_bytes = versions
+                .clone()
+                .map(|(c, _)| c.as_ref().map_or(0, String::len) as u64 + MESSAGE_OVERHEAD)
+                .sum();
+            sessions.push(SessionStorage {
+                id: s.id.clone(),
+                persona: Some(mine.clone()),
+                partner,
+                ended: s.ended,
+                messages: versions.count() as u64,
+                message_bytes,
+                files: s.files.len() as u64,
+                file_bytes: s.files.iter().map(|(_, b)| b).sum(),
+                own_file_bytes: s
+                    .files
+                    .iter()
+                    .filter(|(l, _)| *l == login)
+                    .map(|(_, b)| b)
+                    .sum(),
+            });
+        }
+        let in_sessions: u64 = sessions
+            .iter()
+            .map(|x| x.message_bytes + x.file_bytes)
+            .sum();
+        Ok(AccountStorage {
+            total_bytes: in_sessions + DEVICE_SYNC_BYTES,
+            quota_used_bytes: sessions.iter().map(|x| x.own_file_bytes).sum(),
+            quota_bytes: QUOTA_BYTES,
+            device_sync_bytes: DEVICE_SYNC_BYTES,
+            backup_bytes: 0,
+            sessions,
+        })
     }
 
     fn login_of(&self, domain: &str, handle: &str) -> String {

@@ -860,6 +860,10 @@ impl Backend for Sim {
         now(self.sim_devices())
     }
 
+    fn storage(&self) -> Call<'_, plait_proto::sessions::AccountStorage> {
+        now(self.sim_storage())
+    }
+
     fn remove_device(&self, id: Uuid, reason: crate::backend::RemoveReason) -> Call<'_, ()> {
         now(self.sim_remove_device(id, reason))
     }

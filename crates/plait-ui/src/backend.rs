@@ -637,6 +637,9 @@ pub trait Backend {
     fn rename_device<'a>(&'a self, name: &'a str) -> Call<'a, ()>;
     /// The login's devices; empty until a second one is linked.
     fn devices(&self) -> Call<'_, Vec<Device>>;
+    /// What the login's sessions take on the server (`plait storage`):
+    /// sizes and counts of ciphertext only.
+    fn storage(&self) -> Call<'_, plait_proto::sessions::AccountStorage>;
     /// Removes another of the login's devices; its persona keys are revoked.
     fn remove_device(&self, id: Uuid, reason: RemoveReason) -> Call<'_, ()>;
     /// On a new computer: names it and opens a link for a device in use.

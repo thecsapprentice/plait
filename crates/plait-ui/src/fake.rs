@@ -173,6 +173,16 @@ impl Backend for Fake {
     fn devices(&self) -> Call<'_, Vec<crate::backend::Device>> {
         ready(Ok(Vec::new()))
     }
+    fn storage(&self) -> Call<'_, plait_proto::sessions::AccountStorage> {
+        ready(Ok(plait_proto::sessions::AccountStorage {
+            total_bytes: 0,
+            quota_used_bytes: 0,
+            quota_bytes: 0,
+            device_sync_bytes: 0,
+            backup_bytes: 0,
+            sessions: Vec::new(),
+        }))
+    }
     fn remove_device(&self, _: Uuid, _: crate::backend::RemoveReason) -> Call<'_, ()> {
         ready(Ok(()))
     }
