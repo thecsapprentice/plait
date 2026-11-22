@@ -468,6 +468,37 @@ pub struct QueuedNote {
     pub reply_to: Option<u64>,
     /// Why the server refused it; it waits to be changed or withdrawn.
     pub refused: Option<(ErrorCode, String)>,
+    /// The names of the files it carries.
+    pub files: Vec<String>,
+}
+
+/// The most files one note carries, as `plait-core` allows.
+pub const FILES_MAX: usize = 10;
+
+/// A file ready to go with the next note (3g-3): read when attached, and
+/// kept on this computer until the note is sent or it's taken off.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attached {
+    pub id: Uuid,
+    pub name: String,
+    pub size: u64,
+}
+
+/// What the open server takes: whether sessions take files, and the
+/// largest one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttachmentRules {
+    pub allowed: bool,
+    pub max_bytes: u64,
+}
+
+/// How a note's files are getting on while it's sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilesGoing {
+    /// File `n` (from 1) of `of` is going up.
+    Uploading { n: usize, of: usize, name: String },
+    /// The files are up; the note follows them.
+    Sending,
 }
 
 /// What became of a note sent: it went, it waits for the server, or the
@@ -780,7 +811,19 @@ pub trait Backend {
         channel: &'a str,
         text: &'a str,
         reply_to: Option<u64>,
+        files: &'a [Uuid],
     ) -> Call<'a, Sending>;
+    /// Whether the open server takes attachments, and how large.
+    fn attachment_rules(&self) -> Call<'_, AttachmentRules>;
+    /// Asks for files to attach, in the system's dialog; none if cancelled.
+    fn choose_files(&self) -> Call<'_, Vec<String>>;
+    /// Reads the file at `path`, ready for the next note. Refuses one the
+    /// server wouldn't take, before anything is encrypted.
+    fn attach<'a>(&'a self, path: &'a str) -> Call<'a, Attached>;
+    /// Takes an attached file off the next note.
+    fn detach(&self, id: Uuid);
+    /// How the files of the note being sent are getting on, while they go.
+    fn files_going(&self) -> Option<FilesGoing>;
     /// Tries the notes waiting in a session again, in order.
     fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, Sending>;
     /// Changes a waiting note's text; a refused one is tried again.

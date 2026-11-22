@@ -349,8 +349,25 @@ impl Backend for Fake {
         _: &'a str,
         _: &'a str,
         _: Option<u64>,
+        _: &'a [Uuid],
     ) -> Call<'a, crate::backend::Sending> {
         Box::pin(async { Ok(crate::backend::Sending::Sent) })
+    }
+    fn attachment_rules(&self) -> Call<'_, crate::backend::AttachmentRules> {
+        ready(Ok(crate::backend::AttachmentRules {
+            allowed: true,
+            max_bytes: 10 * 1024 * 1024,
+        }))
+    }
+    fn choose_files(&self) -> Call<'_, Vec<String>> {
+        ready(Ok(Vec::new()))
+    }
+    fn attach<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::Attached> {
+        ready(Err(Problem::Gone))
+    }
+    fn detach(&self, _: Uuid) {}
+    fn files_going(&self) -> Option<crate::backend::FilesGoing> {
+        None
     }
     fn send_waiting<'a>(&'a self, _: &'a str) -> Call<'a, crate::backend::Sending> {
         Box::pin(async { Ok(crate::backend::Sending::Sent) })

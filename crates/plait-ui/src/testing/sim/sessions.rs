@@ -16,8 +16,9 @@ use uuid::Uuid;
 
 use super::{Sim, SimServer, refused};
 use crate::backend::{
-    ChannelView, Draft, NOTE_MAX, Note, NoteFile, NoteVersion, Problem, QueuedNote, SafetyNumbers,
-    Sending, SessionStanding, SessionSummary, SessionView, Verification, Writer, codes,
+    Attached, ChannelView, Draft, NOTE_MAX, Note, NoteFile, NoteVersion, Problem, QueuedNote,
+    SafetyNumbers, Sending, SessionStanding, SessionSummary, SessionView, Verification, Writer,
+    codes,
 };
 
 /// The channels every session has.
@@ -151,6 +152,8 @@ pub(super) struct Here {
     drafts: HashMap<(String, String), Draft>,
     /// Notes waiting to be sent: session and note, oldest first.
     queued: Vec<(String, QueuedNote)>,
+    /// The files of waiting notes, by note.
+    queued_files: HashMap<Uuid, Vec<(String, Vec<u8>)>>,
 }
 
 fn base_time() -> OffsetDateTime {
@@ -790,9 +793,10 @@ impl Sim {
         channel: &str,
         text: &str,
         reply_to: Option<u64>,
+        files: Vec<(String, Vec<u8>)>,
     ) -> Result<Sending, Problem> {
         let text = text.trim();
-        if text.is_empty() || text.chars().count() > NOTE_MAX {
+        if (text.is_empty() && files.is_empty()) || text.chars().count() > NOTE_MAX {
             return Err(refused(
                 codes::SESSION_CHECK_FAILED,
                 "a note can't be empty or longer than the limit",
@@ -804,10 +808,61 @@ impl Sim {
             text: text.to_owned(),
             reply_to,
             refused: None,
+            files: files.iter().map(|(n, _)| n.clone()).collect(),
         };
         let mine = note.id;
-        self.with_server_mut(|_, store| store.sessions.queued.push((id.to_owned(), note)));
+        self.with_server_mut(|_, store| {
+            if !files.is_empty() {
+                store.sessions.queued_files.insert(mine, files);
+            }
+            store.sessions.queued.push((id.to_owned(), note));
+        });
         self.sim_flush(id, Some(mine))
+    }
+
+    /// Reads a file from this computer's disk, as native reads one, and
+    /// refuses what the server wouldn't take.
+    pub(super) fn sim_attach(&self, path: &str) -> Result<Attached, Problem> {
+        let (_, _, server) = self.reach()?;
+        let name = path.rsplit('/').next().unwrap_or(path).to_owned();
+        if !server.attachments {
+            return Err(Problem::refused(
+                codes::ATTACHMENTS_OFF,
+                format!(
+                    "{} doesn't take attachments: its administrators keep sessions to writing.",
+                    server.domain
+                ),
+            ));
+        }
+        let contents = self.0.borrow().disk.get(path).cloned().ok_or_else(|| {
+            Problem::refused(
+                codes::ATTACHMENT_UNREADABLE,
+                format!("Couldn't read {name}: No such file or directory (os error 2)."),
+            )
+        })?;
+        if contents.len() as u64 > server.max_attachment_bytes {
+            return Err(Problem::refused(
+                codes::ATTACHMENT_TOO_LARGE,
+                format!(
+                    "{name} is too large: {} takes files up to {}.",
+                    server.domain,
+                    crate::storage::size(server.max_attachment_bytes)
+                ),
+            ));
+        }
+        let a = Attached {
+            id: Uuid::now_v7(),
+            name: name.clone(),
+            size: contents.len() as u64,
+        };
+        self.0.borrow_mut().attached.insert(a.id, (name, contents));
+        Ok(a)
+    }
+
+    /// What the system's file dialog answers from now: these paths on this
+    /// computer's disk (`put_on_disk`), or none as if cancelled.
+    pub fn files_pick(&self, paths: &[&str]) {
+        self.0.borrow_mut().files_pick = paths.iter().map(|p| (*p).to_owned()).collect();
     }
 
     /// Sends a session's waiting notes in order, as `drafts::flush` does:
@@ -834,7 +889,52 @@ impl Sim {
                     store.sessions.queued[i].1.refused = Some(why.clone());
                     return Some(Err((q.id, why.0, why.1)));
                 };
-                session.write(&handle, &q.channel, &q.text, q.reply_to);
+                let files = store
+                    .sessions
+                    .queued_files
+                    .get(&q.id)
+                    .cloned()
+                    .unwrap_or_default();
+                // The server checks a note's files when it's sent, as core does.
+                if !files.is_empty() {
+                    let why = if !server.attachments {
+                        Some((
+                            codes::ATTACHMENTS_OFF,
+                            "this server doesn't take attachments".to_owned(),
+                        ))
+                    } else if files
+                        .iter()
+                        .any(|(_, b)| b.len() as u64 > server.max_attachment_bytes)
+                    {
+                        Some((
+                            codes::TOO_LARGE,
+                            "an attachment is larger than this server takes".to_owned(),
+                        ))
+                    } else {
+                        None
+                    };
+                    if let Some(why) = why {
+                        store.sessions.queued[i].1.refused = Some(why.clone());
+                        return Some(Err((q.id, why.0, why.1)));
+                    }
+                }
+                let domain = server.domain.clone();
+                let session = server.session_mut(id);
+                let seq = session.write(&handle, &q.channel, &q.text, q.reply_to);
+                for (name, bytes) in files {
+                    let n = session.files.len();
+                    let key = format!("https://{domain}/api/v1/blobs/{id}-{n}");
+                    session
+                        .files
+                        .push((login.clone(), padded(bytes.len() as u64)));
+                    session.note_mut(seq).files.push(SimFile {
+                        key,
+                        name: name.clone(),
+                        media_type: media_type(&name).to_owned(),
+                        bytes,
+                    });
+                }
+                store.sessions.queued_files.remove(&q.id);
                 store.sessions.queued.remove(i);
                 sent.push(q.id);
             }
@@ -886,6 +986,7 @@ impl Sim {
             if store.sessions.queued.len() == before {
                 Err(Problem::Gone)
             } else {
+                store.sessions.queued_files.remove(&note);
                 Ok(())
             }
         })

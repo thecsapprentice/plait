@@ -14,7 +14,7 @@ use crate::{
 const NEARLY_FULL: f64 = 0.9;
 
 /// A size for people: KB, MB and GB in 1024s, with one decimal below 10.
-pub(crate) fn size(bytes: u64) -> String {
+pub fn size(bytes: u64) -> String {
     const UNITS: [&str; 3] = ["KB", "MB", "GB"];
     if bytes < 1024 {
         return if bytes == 1 {

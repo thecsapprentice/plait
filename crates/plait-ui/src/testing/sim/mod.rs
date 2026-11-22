@@ -73,6 +73,10 @@ pub struct SimServer {
     pub acceptance: Acceptance,
     /// Fetching the rules fails (a flaky connection, say).
     pub rules_fail: bool,
+    /// Whether sessions here take attachments (the administrators' switch).
+    pub attachments: bool,
+    /// The largest attachment it takes.
+    pub max_attachment_bytes: u64,
     accounts: HashMap<String, Account>,
     /// Personas by login, with whether their identity key is published.
     personas: Vec<(String, Persona, bool)>,
@@ -91,6 +95,8 @@ impl SimServer {
             rules: None,
             acceptance: Acceptance::Never,
             rules_fail: false,
+            attachments: true,
+            max_attachment_bytes: 10 * 1024 * 1024,
             accounts: HashMap::new(),
             personas: Vec::new(),
             board: board::Board::default(),
@@ -148,6 +154,12 @@ struct State {
     disk: std::collections::BTreeMap<String, Vec<u8>>,
     /// Attachments this computer doesn't have, by key.
     missing_here: HashSet<String>,
+    /// What the system's file dialog answers (`files_pick`).
+    files_pick: Vec<String>,
+    /// Files attached to the next note.
+    attached: HashMap<Uuid, (String, Vec<u8>)>,
+    /// How the files of a note being sent are getting on.
+    going: Option<crate::backend::FilesGoing>,
 }
 
 /// The simulated world: servers out there and this computer's app state.
@@ -192,6 +204,9 @@ impl Sim {
             folder_pick: None,
             disk: Default::default(),
             missing_here: HashSet::new(),
+            files_pick: Vec::new(),
+            attached: HashMap::new(),
+            going: None,
             settings: AppSettings {
                 theme: Theme::System,
                 text_size: 100,
@@ -1071,8 +1086,65 @@ impl Backend for Sim {
         channel: &'a str,
         text: &'a str,
         reply_to: Option<u64>,
+        files: &'a [Uuid],
     ) -> Call<'a, crate::backend::Sending> {
-        now(self.sim_send_note(id, channel, text, reply_to))
+        let ids = files.to_vec();
+        let files: Vec<(String, Vec<u8>)> = {
+            let st = self.0.borrow();
+            files
+                .iter()
+                .filter_map(|f| st.attached.get(f).cloned())
+                .collect()
+        };
+        // While a test holds the reply, the first file is still going up.
+        if let Some((name, _)) = files.first() {
+            self.0.borrow_mut().going = Some(crate::backend::FilesGoing::Uploading {
+                n: 1,
+                of: files.len(),
+                name: name.clone(),
+            });
+        }
+        let result = self.sim_send_note(id, channel, text, reply_to, files);
+        // In the outbox now, so off the composer, as native does.
+        if result.is_ok() {
+            let mut st = self.0.borrow_mut();
+            for id in &ids {
+                st.attached.remove(id);
+            }
+        }
+        let held = self.0.borrow().replies_held.get("send_note").cloned();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            self.0.borrow_mut().going = None;
+            result
+        })
+    }
+
+    fn attachment_rules(&self) -> Call<'_, crate::backend::AttachmentRules> {
+        now(self
+            .reach()
+            .map(|(_, _, server)| crate::backend::AttachmentRules {
+                allowed: server.attachments,
+                max_bytes: server.max_attachment_bytes,
+            }))
+    }
+
+    fn choose_files(&self) -> Call<'_, Vec<String>> {
+        now(Ok(self.0.borrow().files_pick.clone()))
+    }
+
+    fn attach<'a>(&'a self, path: &'a str) -> Call<'a, crate::backend::Attached> {
+        now(self.sim_attach(path))
+    }
+
+    fn detach(&self, id: Uuid) {
+        self.0.borrow_mut().attached.remove(&id);
+    }
+
+    fn files_going(&self) -> Option<crate::backend::FilesGoing> {
+        self.0.borrow().going.clone()
     }
 
     fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::Sending> {
