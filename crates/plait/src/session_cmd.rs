@@ -349,16 +349,9 @@ pub async fn session(ctx: &Ctx, cmd: SessionCommand) -> Result<()> {
                     eprintln!("{}: not available on this device", a.name);
                     continue;
                 };
-                // Never overwrite: add a number until the name is free.
-                let name = plait_core::attachments::safe_name(&a.name);
-                let mut path = to.join(&name);
-                let mut n = 1;
-                while path.exists() {
-                    path = to.join(format!("{n}-{name}"));
-                    n += 1;
-                }
-                std::fs::write(&path, contents.as_slice())
-                    .with_context(|| format!("writing {}", path.display()))?;
+                // Never overwrite: a number goes in front until the name is free.
+                let path = plait_core::attachments::save_to(&to, &a.name, &contents)
+                    .with_context(|| format!("writing {} into {}", a.name, to.display()))?;
                 saved.push(path.display().to_string());
             }
             ctx.print(&saved, |saved| {

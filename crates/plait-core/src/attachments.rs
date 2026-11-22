@@ -188,9 +188,54 @@ pub fn safe_name(name: &str) -> String {
     }
 }
 
+/// Writes an attachment into `dir` under its safe name, never over an
+/// existing file: a number goes in front until the name is free. Returns
+/// where it went.
+pub fn save_to(
+    dir: &std::path::Path,
+    name: &str,
+    contents: &[u8],
+) -> std::io::Result<std::path::PathBuf> {
+    let name = safe_name(name);
+    let mut n = 0;
+    loop {
+        let path = if n == 0 {
+            dir.join(&name)
+        } else {
+            dir.join(format!("{n}-{name}"))
+        };
+        // create_new: a file that appeared since looking is never replaced.
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                std::io::Write::write_all(&mut f, contents)?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => n += 1,
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saving_never_overwrites_and_keeps_names_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = save_to(dir.path(), "../notes.txt", b"one").unwrap();
+        let b = save_to(dir.path(), "notes.txt", b"two").unwrap();
+        let c = save_to(dir.path(), "notes.txt", b"three").unwrap();
+        assert_eq!(a, dir.path().join("notes.txt"));
+        assert_eq!(b, dir.path().join("1-notes.txt"));
+        assert_eq!(c, dir.path().join("2-notes.txt"));
+        assert_eq!(std::fs::read(&a).unwrap(), b"one");
+        assert_eq!(std::fs::read(&c).unwrap(), b"three");
+    }
 
     const MAX: u64 = plait_proto::limits::DEFAULT_MAX_ATTACHMENT_BYTES;
 
