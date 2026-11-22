@@ -1459,11 +1459,32 @@ pub const MAX_FILES: usize = 10;
 
 /// Sends a message: each file is encrypted and uploaded first, then the
 /// note carrying their keys. Returns its place in the log.
+/// How a message with files is getting on (`post_reporting`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Posting {
+    /// Encrypting and uploading file `n` (from 1) of `of`.
+    Uploading { n: usize, of: usize, name: String },
+    /// The files are up; the message itself is going.
+    Sending,
+}
+
 pub async fn post(
     store: &Store,
     client: &Client,
     id: &str,
     draft: Draft<'_>,
+) -> Result<u64, CoreError> {
+    post_reporting(store, client, id, draft, &|_| {}).await
+}
+
+/// As [`post`], calling `report` as each file goes up and as the message
+/// follows them.
+pub async fn post_reporting(
+    store: &Store,
+    client: &Client,
+    id: &str,
+    draft: Draft<'_>,
+    report: &(dyn Fn(Posting) + Send + Sync),
 ) -> Result<u64, CoreError> {
     let text = if draft.files.is_empty() {
         check_text(draft.text)?
@@ -1494,7 +1515,13 @@ pub async fn post(
             ));
         }
         let max = instance.limits.max_attachment_bytes;
-        for (name, contents) in &draft.files {
+        let of = draft.files.len();
+        for (i, (name, contents)) in draft.files.iter().enumerate() {
+            report(Posting::Uploading {
+                n: i + 1,
+                of,
+                name: attachments::safe_name(name),
+            });
             let sealed = attachments::seal(contents, max)?;
             let up = client
                 .upload_blob(&r.session.id, sealed.blob.clone())
@@ -1506,6 +1533,9 @@ pub async fn post(
             ));
             blobs.push(up.id);
         }
+    }
+    if !blobs.is_empty() {
+        report(Posting::Sending);
     }
     let seq = send(store, client, &r, &blobs, |hlc, n| {
         let note = Activity::create(text, channel, hlc, n).with_attachments(attachments.clone());

@@ -455,6 +455,88 @@ async fn queued_notes_go_in_order_and_stop_at_a_refusal() {
     server.stop().await.unwrap();
 }
 
+/// 3g-3: a note's files wait in the outbox with it, go up when it's sent
+/// (saying how they're getting on), and arrive intact; its files leave
+/// the outbox with it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_queued_notes_files_go_with_it_and_arrive_intact() {
+    let server = server!();
+    let alice_c = server.account("alice").await.unwrap();
+    let (fox, laptop) = writer(&alice_c, "ink_fox").await;
+    let bob_c = server.account("bob").await.unwrap();
+    let (wren, bob) = writer(&bob_c, "quiet_wren").await;
+    let id = session((&laptop, &alice_c, &fox), (&bob, &bob_c, &wren)).await;
+    sync(&laptop, &alice_c).await;
+    sync(&bob, &bob_c).await;
+    let gid = plait_proto::keys::unb64(&id).unwrap();
+
+    let photo = vec![7u8; 5000];
+    let q = drafts::queue_with_files(
+        &laptop,
+        &gid,
+        "story",
+        "The cove.",
+        None,
+        vec![
+            ("cove.png".into(), photo.clone()),
+            ("notes.txt".into(), b"ledger".to_vec()),
+        ],
+    )
+    .unwrap();
+    let seen = std::sync::Mutex::new(Vec::new());
+    let done = drafts::flush_reporting(&laptop, &alice_c, &id, &gid, &|p| {
+        seen.lock().unwrap().push(p);
+    })
+    .await
+    .unwrap();
+    assert_eq!(done.sent.len(), 1);
+    assert_eq!(
+        seen.into_inner().unwrap(),
+        [
+            sessions::Posting::Uploading {
+                n: 1,
+                of: 2,
+                name: "cove.png".into()
+            },
+            sessions::Posting::Uploading {
+                n: 2,
+                of: 2,
+                name: "notes.txt".into()
+            },
+            sessions::Posting::Sending,
+        ]
+    );
+    // Its files left the outbox with it.
+    assert!(drafts::queued(&laptop, &gid).unwrap().is_empty());
+    assert!(drafts::queued_files(&laptop, &gid, &q).is_err());
+
+    // The other writer reads them, byte for byte.
+    let read = sessions::read(&bob, &bob_c, &id).await.unwrap();
+    let note = read
+        .messages
+        .iter()
+        .find(|m| m.content == "The cove.")
+        .unwrap();
+    let got: Vec<_> = note
+        .attachments
+        .iter()
+        .map(|a| {
+            (
+                a.name.clone(),
+                sessions::file(&bob, &a.url).unwrap().unwrap().to_vec(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("cove.png".to_owned(), photo),
+            ("notes.txt".to_owned(), b"ledger".to_vec())
+        ]
+    );
+    server.stop().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_device_added_through_its_last_resort_package_updates_its_key() {
     let server = server!();

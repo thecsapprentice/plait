@@ -27,6 +27,9 @@ use crate::{
 
 const DRAFT: u8 = 7;
 const QUEUED: u8 = 8;
+/// A waiting note's files, each under its own key (queue id, then its
+/// place), so a note's record stays small.
+const QUEUED_FILE: u8 = 9;
 /// The group ids (base64url) of sessions with notes waiting.
 const WAITING: &[u8] = b"drafts:waiting";
 
@@ -125,6 +128,42 @@ pub struct Queued {
     /// Set when the server refused it; it waits to be changed or withdrawn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refused: Option<Refused>,
+    /// The names of the files it carries, in order; their contents wait
+    /// beside it (3g-3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+}
+
+fn file_key(gid: &[u8], id: Uuid, n: usize) -> Vec<u8> {
+    let mut at = id.as_bytes().to_vec();
+    at.extend_from_slice(&u32::try_from(n).unwrap_or(u32::MAX).to_be_bytes());
+    key(gid, QUEUED_FILE, &at)
+}
+
+/// A waiting note's files, in order, with their names.
+pub fn queued_files(
+    store: &Store,
+    gid: &[u8],
+    q: &Queued,
+) -> Result<Vec<(String, Vec<u8>)>, CoreError> {
+    q.files
+        .iter()
+        .enumerate()
+        .map(|(n, name)| {
+            let contents = store
+                .get(Table::Messages, &file_key(gid, q.id, n))?
+                .ok_or_else(|| err("a waiting note's file is missing"))?;
+            Ok((name.clone(), contents.to_vec()))
+        })
+        .collect()
+}
+
+fn drop_files(store: &Store, gid: &[u8], q: &Queued) -> Result<(), CoreError> {
+    let p = Provider::new(store);
+    for n in 0..q.files.len() {
+        p.set(Table::Messages, &file_key(gid, q.id, n), None)?;
+    }
+    Ok(())
 }
 
 /// Queues a note behind any already waiting. It's checked as sending
@@ -136,19 +175,44 @@ pub fn queue(
     text: &str,
     reply_to: Option<u64>,
 ) -> Result<Queued, CoreError> {
-    let text = sessions::check_text(text)?;
+    queue_with_files(store, gid, channel, text, reply_to, Vec::new())
+}
+
+/// As [`queue`], with files: a name and the contents each. A note with
+/// files may have no text, as `sessions::post` allows. The server's switch
+/// and size limit are checked when it's sent, as it may be offline now.
+pub fn queue_with_files(
+    store: &Store,
+    gid: &[u8],
+    channel: &str,
+    text: &str,
+    reply_to: Option<u64>,
+    files: Vec<(String, Vec<u8>)>,
+) -> Result<Queued, CoreError> {
+    let text = if files.is_empty() {
+        sessions::check_text(text)?
+    } else {
+        text.trim()
+    };
+    if files.len() > sessions::MAX_FILES {
+        return Err(err(format!(
+            "at most {} files per note",
+            sessions::MAX_FILES
+        )));
+    }
     let q = Queued {
         id: Uuid::now_v7(),
         channel: channel.to_owned(),
         text: text.to_owned(),
         reply_to,
         refused: None,
+        files: files.iter().map(|(name, _)| name.clone()).collect(),
     };
-    put(
-        &Provider::new(store),
-        &key(gid, QUEUED, q.id.as_bytes()),
-        &q,
-    )?;
+    let p = Provider::new(store);
+    for (n, (_, contents)) in files.into_iter().enumerate() {
+        p.set(Table::Messages, &file_key(gid, q.id, n), Some(contents))?;
+    }
+    put(&p, &key(gid, QUEUED, q.id.as_bytes()), &q)?;
     note_waiting(store, gid)?;
     Ok(q)
 }
@@ -178,7 +242,11 @@ pub fn change(store: &Store, gid: &[u8], id: Uuid, text: &str) -> Result<(), Cor
 pub fn withdraw(store: &Store, gid: &[u8], id: Uuid) -> Result<bool, CoreError> {
     let p = Provider::new(store);
     let k = key(gid, QUEUED, id.as_bytes());
-    let was = get::<Queued>(&p, &k)?.is_some();
+    let was = get::<Queued>(&p, &k)?;
+    if let Some(q) = &was {
+        drop_files(store, gid, q)?;
+    }
+    let was = was.is_some();
     p.set(Table::Messages, &k, None)?;
     note_waiting(store, gid)?;
     Ok(was)
@@ -204,20 +272,42 @@ pub async fn flush(
     id: &str,
     gid: &[u8],
 ) -> Result<Flushed, CoreError> {
+    flush_reporting(store, client, id, gid, &|_| {}).await
+}
+
+/// As [`flush`], saying how a note's files are getting on as they go.
+pub async fn flush_reporting(
+    store: &Store,
+    client: &Client,
+    id: &str,
+    gid: &[u8],
+    report: &(dyn Fn(sessions::Posting) + Send + Sync),
+) -> Result<Flushed, CoreError> {
     let mut done = Flushed::default();
     for q in queued(store, gid)? {
         if q.refused.is_some() {
             done.refused = Some(q.id);
             break;
         }
-        let sent = match q.reply_to {
-            Some(to) => sessions::reply(store, client, id, &q.text, Some(&q.channel), to).await,
-            None => sessions::write(store, client, id, &q.text, Some(&q.channel)).await,
+        let sent = if q.files.is_empty() {
+            match q.reply_to {
+                Some(to) => sessions::reply(store, client, id, &q.text, Some(&q.channel), to).await,
+                None => sessions::write(store, client, id, &q.text, Some(&q.channel)).await,
+            }
+        } else {
+            let draft = sessions::Draft {
+                text: &q.text,
+                channel: Some(&q.channel),
+                reply_to: q.reply_to,
+                files: queued_files(store, gid, &q)?,
+            };
+            sessions::post_reporting(store, client, id, draft, report).await
         };
         let p = Provider::new(store);
         let k = key(gid, QUEUED, q.id.as_bytes());
         match sent {
             Ok(seq) => {
+                drop_files(store, gid, &q)?;
                 p.set(Table::Messages, &k, None)?;
                 done.sent.push((q.id, seq));
             }
@@ -269,6 +359,29 @@ mod tests {
     use super::*;
 
     const GID: &[u8] = &[7u8; 32];
+
+    #[test]
+    fn a_queued_notes_files_wait_beside_it_and_go_with_it() {
+        let store = Store::in_memory();
+        let files = vec![
+            ("cove.png".to_owned(), vec![1u8; 300]),
+            ("notes.txt".to_owned(), b"ledger".to_vec()),
+        ];
+        // Files alone are a note, as sending allows.
+        let q = queue_with_files(&store, GID, "story", "  ", None, files.clone()).unwrap();
+        assert_eq!(q.files, ["cove.png", "notes.txt"]);
+        assert_eq!(q.text, "");
+        assert_eq!(queued(&store, GID).unwrap(), [q.clone()]);
+        assert_eq!(queued_files(&store, GID, &q).unwrap(), files);
+        // Too many is refused before anything is kept.
+        let many = vec![("x".to_owned(), vec![0u8]); sessions::MAX_FILES + 1];
+        assert!(queue_with_files(&store, GID, "story", "", None, many).is_err());
+        assert_eq!(queued(&store, GID).unwrap().len(), 1);
+        // Taking it back takes its files too.
+        assert!(withdraw(&store, GID, q.id).unwrap());
+        assert!(queued_files(&store, GID, &q).is_err());
+        assert!(waiting(&store).unwrap().is_empty());
+    }
 
     #[test]
     fn drafts_are_kept_per_channel_and_empty_ones_go() {
