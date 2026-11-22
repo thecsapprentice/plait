@@ -240,6 +240,8 @@ Every problem Plait can show has a code, `Q-AACC`: `AA` is the area and `CC` the
 | P-3304 | `ATTACHMENT_NOT_YOURS` | A message names attachments that aren't the sender's to attach there. |
 | P-3350 | `ATTACHMENT_CHECK_FAILED` | An attachment failed a check on this computer. |
 | P-3351 | `ATTACHMENT_ELSEWHERE` | That attachment is on another server (federation comes later). |
+| P-3352 | `ATTACHMENT_TOO_LARGE` | A file is larger than this server takes, so it wasn't attached. |
+| P-3353 | `ATTACHMENT_UNREADABLE` | A file couldn't be read on this computer, so it wasn't attached. |
 
 ## P-34xx: Backup and recovery
 
