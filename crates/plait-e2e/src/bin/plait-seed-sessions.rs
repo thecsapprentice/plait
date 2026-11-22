@@ -347,6 +347,12 @@ async fn decline(author: &Writer, prompt: Uuid, id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// A picture to send in a seeded session: the brand's social card.
+const LAMP_ROOM: &[u8] = include_bytes!("../../../../assets/brand/social/og-card-light.png");
+/// A file to send with it.
+const LAST_PAGE: &str =
+    "Tuesday. Lamp lit at 6.40. Wind SW, rising. A light where no light should be.\n";
+
 async fn say(w: &Writer, session: &str, channel: &str, text: &str) -> Result<u64> {
     sessions::write(&w.store, &w.client, session, text, Some(channel))
         .await
@@ -387,6 +393,23 @@ async fn act_out(me: &Writer, others: &[Writer]) -> Result<()> {
         "The log had been kept in the same hand for eleven years. Then, one Tuesday, it wasn't.",
     )
     .await?;
+    // Files (3g-2): a picture shown on the note, and a file to save.
+    sessions::post(
+        &b.store,
+        &b.client,
+        &fresh,
+        sessions::Draft {
+            text: "The view from the lamp room, and the log's last page.",
+            channel: Some("story"),
+            reply_to: None,
+            files: vec![
+                ("lamp-room.png".into(), LAMP_ROOM.to_vec()),
+                ("last-page.txt".into(), LAST_PAGE.as_bytes().to_vec()),
+            ],
+        },
+    )
+    .await
+    .with_context(|| format!("{} attaching files", b.login))?;
 
     // Asked by me: declined, waiting, and withdrawn.
     let id = ask(
