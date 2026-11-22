@@ -219,6 +219,30 @@ async fn requests_on_your_prompts_are_read_accepted_and_declined() {
 }
 
 #[tokio::test]
+async fn an_answer_counts_even_if_the_queue_closes_before_the_list_reloads() {
+    let sim = sim();
+    let mut d = signed_in(&sim).await;
+    let id = own_prompt(&sim, "The lighthouse ledger");
+    sim.request_from(SERVER, "gull", id, PITCH);
+    d.wait_for_text("A request is waiting on “The lighthouse ledger”.")
+        .await;
+    assert!(d.has_button("Requests 1 new"));
+    d.click("Read them").await;
+    d.wait_for_text(PITCH).await;
+    // On a slow network the reload after answering is still loading when
+    // the writer leaves the queue (#111). It's the app's, so it finishes.
+    sim.hold_requests();
+    d.click("Decline…").await;
+    d.click("Decline this request").await;
+    d.wait_for_text("Declined @gull's request.").await;
+    d.click("Home").await;
+    sim.release_requests();
+    d.wait_until("the count cleared", |d| d.has_button("Requests"))
+        .await;
+    assert!(!d.has_text("A request is waiting"));
+}
+
+#[tokio::test]
 async fn the_reader_leads_from_your_prompt_to_its_requests() {
     let sim = sim();
     let mut d = signed_in(&sim).await;

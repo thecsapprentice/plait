@@ -128,6 +128,7 @@ struct State {
     live: Rc<tokio::sync::Notify>,
     /// While set, loading the session list waits for it (a slow network).
     sessions_held: Option<Rc<tokio::sync::Notify>>,
+    requests_held: Option<Rc<tokio::sync::Notify>>,
     /// The server whose store couldn't be opened, as native has no store
     /// open then: `standing` fails until it's opened.
     unopened: Option<Uuid>,
@@ -170,6 +171,7 @@ impl Sim {
             clock: Rc::default(),
             live: Rc::default(),
             sessions_held: None,
+            requests_held: None,
             unopened: None,
             settings: AppSettings {
                 theme: Theme::System,
@@ -208,6 +210,19 @@ impl Sim {
     /// Session lists held by `hold_sessions` arrive, and later ones don't wait.
     pub fn release_sessions(&self) {
         if let Some(n) = self.0.borrow_mut().sessions_held.take() {
+            n.notify_waiters();
+        }
+    }
+
+    /// Loading the requests lists (waiting and sent) waits from now until
+    /// `release_requests`, as on a slow network.
+    pub fn hold_requests(&self) {
+        self.0.borrow_mut().requests_held = Some(Rc::default());
+    }
+
+    /// Requests lists held by `hold_requests` arrive, and later ones don't wait.
+    pub fn release_requests(&self) {
+        if let Some(n) = self.0.borrow_mut().requests_held.take() {
             n.notify_waiters();
         }
     }
@@ -896,7 +911,13 @@ impl Backend for Sim {
     }
 
     fn sent_requests(&self) -> Call<'_, Vec<crate::backend::SentRequest>> {
-        now(self.sim_sent_requests())
+        let held = self.0.borrow().requests_held.clone();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            now(self.sim_sent_requests()).await
+        })
     }
 
     fn withdraw_request(&self, id: Uuid) -> Call<'_, ()> {
@@ -904,7 +925,13 @@ impl Backend for Sim {
     }
 
     fn waiting_requests(&self) -> Call<'_, Vec<crate::backend::WaitingPrompt>> {
-        now(self.sim_waiting())
+        let held = self.0.borrow().requests_held.clone();
+        Box::pin(async move {
+            if let Some(n) = held {
+                n.notified().await;
+            }
+            now(self.sim_waiting()).await
+        })
     }
 
     fn inbox(&self, prompt: Uuid, held: bool) -> Call<'_, crate::backend::Inbox> {
