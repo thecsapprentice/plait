@@ -19,7 +19,7 @@ use plait_proto::{
     },
     rules::{RulesAcceptance, UpdateRules},
 };
-use plait_ui::testing::Driver;
+use plait_ui::{Backend, testing::Driver};
 
 const PASSWORD: &str = "correct horse battery";
 
@@ -919,6 +919,84 @@ async fn a_notes_files_are_shown_and_saved_from_a_real_server() {
     assert_eq!(
         std::fs::read(saved.path().join("notes.txt")).unwrap(),
         b"the keeper's ledger"
+    );
+    server.stop().await.unwrap();
+}
+
+/// 3g-3: a file attached in the app goes with the note and arrives intact
+/// on the other writer's side; while it goes, the app can say how.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_attached_in_the_app_arrives_intact_on_a_real_server() {
+    use plait_core::{requests, sessions};
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (wren_c, wren, _, theirs) =
+        writer_with_prompt(&server, "wren", "The lighthouse ledger").await;
+    let dir = tempfile::tempdir().unwrap();
+    let files = tempfile::tempdir().unwrap();
+    let notes = files.path().join("notes.txt");
+    std::fs::write(&notes, b"the keeper's ledger").unwrap();
+    let vault: Arc<dyn Vault> = Arc::new(MemoryVault::default());
+    let backend = Rc::new(
+        NativeBackend::new(
+            Paths::in_dir(dir.path()),
+            Some(vault),
+            tokio::runtime::Handle::current(),
+        )
+        .unwrap()
+        .answer_file_dialog_with(vec![notes.clone()]),
+    );
+    let mut d = Driver::new(backend.clone());
+    on_the_board(&mut d, &server).await;
+    d.wait_for_text("The lighthouse ledger").await;
+    d.click_containing("The lighthouse ledger").await;
+    d.click("Ask to write together").await;
+    d.type_into("request-pitch", "I'd write the keeper.").await;
+    d.click("Send request").await;
+    d.wait_for_text("Request sent.").await;
+    let inbox = requests::inbox(&wren, &wren_c, theirs, false)
+        .await
+        .unwrap();
+    requests::accept(&wren, &wren_c, inbox.requests[0].id)
+        .await
+        .unwrap();
+    d.click("Home").await;
+    d.wait_for_text("Your request on “The lighthouse ledger” was accepted")
+        .await;
+    d.click("Open the session").await;
+    d.wait_for_text("Writing with @wren_pen").await;
+
+    d.click("Attach files…").await;
+    d.wait_for_text("notes.txt, 19 bytes").await;
+    d.type_into("note-editor", "My notes.").await;
+    d.click("Send").await;
+    d.wait_for_text("Sent.").await;
+    assert!(backend.files_going().is_none(), "done going");
+
+    let session = sessions::list(&wren, &wren_c).await.unwrap()[0]
+        .session
+        .id
+        .clone();
+    let read = sessions::read(&wren, &wren_c, &session).await.unwrap();
+    let note = read
+        .messages
+        .iter()
+        .find(|m| m.content == "My notes.")
+        .expect("the note arrived");
+    let got: Vec<_> = note
+        .attachments
+        .iter()
+        .map(|a| {
+            (
+                a.name.clone(),
+                sessions::file(&wren, &a.url).unwrap().unwrap().to_vec(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [("notes.txt".to_owned(), b"the keeper's ledger".to_vec())]
     );
     server.stop().await.unwrap();
 }
