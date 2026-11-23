@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use plait_ui::testing::{Driver, Sim};
+use plait_ui::testing::{Driver, Interrupt, Sim};
 
 const SERVER: &str = "writers.example";
 const PASSWORD: &str = "correct horse battery";
@@ -195,4 +195,58 @@ async fn progress_says_which_file_is_going_up() {
     sim.release_reply("send_note");
     d.wait_for_text("Sent.").await;
     assert!(!d.has_text("Uploading"));
+}
+
+// ---- Sending stopped partway (#125) ----------------------------------------------
+
+/// What Storage says the session holds, after leaving the session.
+async fn stored(d: &mut Driver) -> bool {
+    d.click("Settings").await;
+    d.click("See storage use").await;
+    d.wait_until("the totals", |d| d.has_text("@ink_fox with @wren"))
+        .await;
+    // One copy of each file: the retry took only what was left.
+    d.has_text("2 attachments,")
+}
+
+#[tokio::test]
+async fn a_server_gone_partway_takes_only_the_rest_when_tried_again() {
+    let sim = sim();
+    let (mut d, _) = writing(&sim).await;
+    d.drop_files("note-editor", &[COVE, NOTES]).await;
+    d.wait_for_text("notes.txt, 19 bytes").await;
+    sim.server(SERVER, |s| {
+        s.interrupt_before_file = Some((2, Interrupt::Away))
+    });
+    d.type_into("note-editor", "Two files.").await;
+    d.click("Send").await;
+    d.wait_for_text("Not sent yet").await;
+    assert!(d.has_text("With 2 files: cove.png, notes.txt"));
+    sim.server(SERVER, |s| s.reachable = true);
+    d.click("Try again").await;
+    d.wait_until("sent", |d| d.image_src("cove.png").is_some())
+        .await;
+    assert!(stored(&mut d).await);
+}
+
+#[tokio::test]
+async fn attachments_switched_off_partway_refuse_and_go_once_back_on() {
+    let sim = sim();
+    let (mut d, _) = writing(&sim).await;
+    d.drop_files("note-editor", &[COVE, NOTES]).await;
+    d.wait_for_text("notes.txt, 19 bytes").await;
+    sim.server(SERVER, |s| {
+        s.interrupt_before_file = Some((2, Interrupt::AttachmentsOff));
+    });
+    d.type_into("note-editor", "Two files.").await;
+    d.click("Send").await;
+    d.wait_for_text("The server didn't take it.").await;
+    assert!(d.has_text("this server doesn't take attachments"));
+    assert!(d.has_text("With 2 files: cove.png, notes.txt"));
+    sim.server(SERVER, |s| s.attachments = true);
+    // "Try again" sends a refused note again, now the server takes it.
+    d.click("Try again").await;
+    d.wait_until("sent", |d| d.image_src("cove.png").is_some())
+        .await;
+    assert!(stored(&mut d).await);
 }

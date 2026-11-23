@@ -82,6 +82,16 @@ pub(super) struct SimNote {
     files: Vec<SimFile>,
 }
 
+/// What happens to a server just before a note's file goes up
+/// (`SimServer::interrupt_before_file`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interrupt {
+    /// It can't be reached.
+    Away,
+    /// Its administrators switch attachments off.
+    AttachmentsOff,
+}
+
 /// An attachment on a note.
 #[derive(Debug, Clone)]
 pub(super) struct SimFile {
@@ -154,6 +164,8 @@ pub(super) struct Here {
     queued: Vec<(String, QueuedNote)>,
     /// The files of waiting notes, by note.
     queued_files: HashMap<Uuid, Vec<(String, Vec<u8>)>>,
+    /// What the server already took of a waiting note's files (#125).
+    queued_uploaded: HashMap<Uuid, Vec<String>>,
 }
 
 fn base_time() -> OffsetDateTime {
@@ -895,17 +907,34 @@ impl Sim {
                     .get(&q.id)
                     .cloned()
                     .unwrap_or_default();
-                // The server checks a note's files when it's sent, as core does.
-                if !files.is_empty() {
-                    let why = if !server.attachments {
+                // Each file goes up in turn, checked as the server checks it;
+                // one the server took stays taken for a retry (#125).
+                let domain = server.domain.clone();
+                let mut up = store
+                    .sessions
+                    .queued_uploaded
+                    .get(&q.id)
+                    .cloned()
+                    .unwrap_or_default();
+                for (n, (_, bytes)) in files.iter().enumerate().skip(up.len()) {
+                    if let Some((at, cut)) = server.interrupt_before_file
+                        && at == n + 1
+                    {
+                        server.interrupt_before_file = None;
+                        match cut {
+                            Interrupt::Away => server.reachable = false,
+                            Interrupt::AttachmentsOff => server.attachments = false,
+                        }
+                    }
+                    let why = if !server.reachable {
+                        store.sessions.queued_uploaded.insert(q.id, up);
+                        return Some(Ok(sent));
+                    } else if !server.attachments {
                         Some((
                             codes::ATTACHMENTS_OFF,
                             "this server doesn't take attachments".to_owned(),
                         ))
-                    } else if files
-                        .iter()
-                        .any(|(_, b)| b.len() as u64 > server.max_attachment_bytes)
-                    {
+                    } else if bytes.len() as u64 > server.max_attachment_bytes {
                         Some((
                             codes::TOO_LARGE,
                             "an attachment is larger than this server takes".to_owned(),
@@ -914,19 +943,20 @@ impl Sim {
                         None
                     };
                     if let Some(why) = why {
+                        store.sessions.queued_uploaded.insert(q.id, up);
                         store.sessions.queued[i].1.refused = Some(why.clone());
                         return Some(Err((q.id, why.0, why.1)));
                     }
-                }
-                let domain = server.domain.clone();
-                let session = server.session_mut(id);
-                let seq = session.write(&handle, &q.channel, &q.text, q.reply_to);
-                for (name, bytes) in files {
-                    let n = session.files.len();
-                    let key = format!("https://{domain}/api/v1/blobs/{id}-{n}");
+                    let session = server.session_mut(id);
+                    let k = session.files.len();
                     session
                         .files
                         .push((login.clone(), padded(bytes.len() as u64)));
+                    up.push(format!("https://{domain}/api/v1/blobs/{id}-{k}"));
+                }
+                let session = server.session_mut(id);
+                let seq = session.write(&handle, &q.channel, &q.text, q.reply_to);
+                for ((name, bytes), key) in files.into_iter().zip(up) {
                     session.note_mut(seq).files.push(SimFile {
                         key,
                         name: name.clone(),
@@ -934,6 +964,7 @@ impl Sim {
                         bytes,
                     });
                 }
+                store.sessions.queued_uploaded.remove(&q.id);
                 store.sessions.queued_files.remove(&q.id);
                 store.sessions.queued.remove(i);
                 sent.push(q.id);
@@ -955,6 +986,17 @@ impl Sim {
                 }
             }
         })
+    }
+
+    /// "Try again" clears a refusal before sending, as `drafts::retry` does.
+    pub(super) fn sim_retry(&self, id: &str) {
+        self.with_server_mut(|_, store| {
+            for (s, q) in &mut store.sessions.queued {
+                if s == id {
+                    q.refused = None;
+                }
+            }
+        });
     }
 
     pub(super) fn sim_change_waiting(
@@ -987,6 +1029,7 @@ impl Sim {
                 Err(Problem::Gone)
             } else {
                 store.sessions.queued_files.remove(&note);
+                store.sessions.queued_uploaded.remove(&note);
                 Ok(())
             }
         })

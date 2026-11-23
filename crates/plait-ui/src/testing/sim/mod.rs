@@ -25,6 +25,7 @@ mod sessions;
 use sessions::Change;
 
 pub use requests::State as RequestState;
+pub use sessions::Interrupt;
 
 use crate::backend::{
     AccountNotice, AccountSettings, CreatePrompt, CreateReport, Prompt, PromptPage, PromptQuery,
@@ -77,6 +78,9 @@ pub struct SimServer {
     pub attachments: bool,
     /// The largest attachment it takes.
     pub max_attachment_bytes: u64,
+    /// Just before file `n` (from 1) of the next note with files goes up,
+    /// this happens to the server: sending stopped partway (#125).
+    pub interrupt_before_file: Option<(usize, sessions::Interrupt)>,
     accounts: HashMap<String, Account>,
     /// Personas by login, with whether their identity key is published.
     personas: Vec<(String, Persona, bool)>,
@@ -97,6 +101,7 @@ impl SimServer {
             rules_fail: false,
             attachments: true,
             max_attachment_bytes: 10 * 1024 * 1024,
+            interrupt_before_file: None,
             accounts: HashMap::new(),
             personas: Vec::new(),
             board: board::Board::default(),
@@ -1148,6 +1153,7 @@ impl Backend for Sim {
     }
 
     fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, crate::backend::Sending> {
+        self.sim_retry(id);
         now(self.sim_flush(id, None))
     }
 
