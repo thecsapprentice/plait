@@ -117,6 +117,7 @@ fn Sections(section: Section) -> Element {
                         Section::Settings => rsx! { SettingsPage {} },
                         Section::Rules => rsx! { RulesPage {} },
                         Section::Devices => rsx! { DevicesPage {} },
+                        Section::Storage => rsx! { crate::storage::StoragePage {} },
                         Section::Reference => rsx! { crate::reference::ReferencePage {} },
                     }
     }

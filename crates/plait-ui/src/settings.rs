@@ -67,6 +67,15 @@ pub fn SettingsPage() -> Element {
                     "Your devices"
                 }
             }
+            fieldset {
+                legend { "Storage" }
+                p { class: "hint", "What your sessions take on the server, and how much of your attachment allowance you've used." }
+                button {
+                    class: "secondary",
+                    onclick: move |_| model.write().go(crate::model::Section::Storage),
+                    "See storage use"
+                }
+            }
         }
         if has_store {
             for k in [server] {

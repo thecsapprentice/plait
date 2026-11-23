@@ -1265,6 +1265,15 @@ impl Backend for NativeBackend {
         })
     }
 
+    fn storage(&self) -> Call<'_, plait_proto::sessions::AccountStorage> {
+        Box::pin(async move {
+            let open = self.opened()?;
+            let name = open.name.clone();
+            self.run(async move { open.client.storage().await.map_err(|e| problem(&name, e)) })
+                .await
+        })
+    }
+
     fn devices(&self) -> Call<'_, Vec<Device>> {
         Box::pin(async move {
             let open = self.opened()?;
