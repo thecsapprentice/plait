@@ -32,6 +32,8 @@ mod view_tests;
 
 pub use app::{App, Ui};
 pub use backend::Backend;
+/// A size for people (KB, MB, GB), as the app says it everywhere.
+pub use storage::size;
 
 /// The client's stylesheet, for the platform to put in the page's head.
 pub const STYLE: &str = include_str!("style.css");

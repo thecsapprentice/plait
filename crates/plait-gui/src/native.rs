@@ -30,12 +30,12 @@ use plait_ui::backend::{
 };
 use plait_ui::backend::{Approval, Device, LinkStart, PersonaKeys, RemoveReason, codes};
 use plait_ui::backend::{
-    ChannelView, Inbox, IncomingRequest, KeyChange, Note, SentRequest, SessionStanding,
-    SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
+    Attached, AttachmentRules, Draft, ErrorCode, FilesGoing, NoteFile, NoteVersion, QueuedNote,
+    SHOWN_INLINE, SafetyNumbers, Sending, Verification,
 };
 use plait_ui::backend::{
-    Draft, ErrorCode, NoteFile, NoteVersion, QueuedNote, SHOWN_INLINE, SafetyNumbers, Sending,
-    Verification,
+    ChannelView, Inbox, IncomingRequest, KeyChange, Note, SentRequest, SessionStanding,
+    SessionSummary, SessionView, Unread, WaitingPrompt, Writer,
 };
 use tokio::runtime::Handle;
 use uuid::Uuid;
@@ -92,6 +92,13 @@ pub struct NativeBackend {
     /// The folder dialog's answer where there's no window to ask in
     /// (`answer_folder_dialog_with`).
     folder_answer: Option<PathBuf>,
+    /// The file dialog's answer likewise (`answer_file_dialog_with`).
+    files_answer: Option<Vec<PathBuf>>,
+    /// Files attached to the next note, read and waiting to be queued.
+    attached: Mutex<HashMap<Uuid, (String, Vec<u8>)>>,
+    /// How the files of the note being sent are getting on, set from the
+    /// background runtime as they go up.
+    going: Arc<Mutex<Option<FilesGoing>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -291,6 +298,20 @@ fn queued_note(q: drafts::Queued) -> QueuedNote {
         text: q.text,
         reply_to: q.reply_to,
         refused: q.refused.map(|r| (ErrorCode(r.code), r.detail)),
+        files: q.files,
+    }
+}
+
+/// Keeps `going` up to date as a note's files go, for `files_going`.
+fn reporter(going: Arc<Mutex<Option<FilesGoing>>>) -> impl Fn(sessions::Posting) + Send + Sync {
+    move |p| {
+        let now = match p {
+            sessions::Posting::Uploading { n, of, name } => FilesGoing::Uploading { n, of, name },
+            sessions::Posting::Sending => FilesGoing::Sending,
+            // Kept by core for a retry; nothing new to say.
+            sessions::Posting::Accepted { .. } => return,
+        };
+        *lock(&going) = Some(now);
     }
 }
 
@@ -419,6 +440,12 @@ impl NativeBackend {
         self
     }
 
+    /// Answers the file dialog with `files`, likewise.
+    pub fn answer_file_dialog_with(mut self, files: Vec<PathBuf>) -> Self {
+        self.files_answer = Some(files);
+        self
+    }
+
     pub fn new(
         paths: Paths,
         vault: Option<Arc<dyn Vault>>,
@@ -437,6 +464,9 @@ impl NativeBackend {
             link: Mutex::new(None),
             offset: time::UtcOffset::UTC,
             folder_answer: None,
+            files_answer: None,
+            attached: Mutex::new(HashMap::new()),
+            going: Arc::default(),
         })
     }
 
@@ -1878,42 +1908,166 @@ impl Backend for NativeBackend {
         channel: &'a str,
         text: &'a str,
         reply_to: Option<u64>,
+        files: &'a [Uuid],
     ) -> Call<'a, Sending> {
         let (id, channel, text) = (id.to_owned(), channel.to_owned(), text.to_owned());
+        // Copied for the outbox; they leave the composer once it has them.
+        let ids = files.to_vec();
+        let files: Vec<(String, Vec<u8>)> = {
+            let attached = lock(&self.attached);
+            files
+                .iter()
+                .filter_map(|f| attached.get(f).cloned())
+                .collect()
+        };
+        let going = self.going.clone();
         Box::pin(async move {
             let open = self.opened()?;
             let gid = session_gid(&id)?;
             let name = open.name.clone();
-            self.run(async move {
-                let _lock = open.exclusive().await;
-                let work = async {
-                    let (store, client) = (&open.store, &open.client);
-                    let q = drafts::queue(store, &gid, &channel, &text, reply_to)?;
-                    let done = drafts::flush(store, client, &id, &gid).await?;
-                    Ok(sending(&done, &drafts::queued(store, &gid)?, Some(q.id)))
-                };
-                work.await.map_err(|e| problem(&name, e))
-            })
-            .await
+            let result = self
+                .run(async move {
+                    let _lock = open.exclusive().await;
+                    let report = reporter(going);
+                    let work = async {
+                        let (store, client) = (&open.store, &open.client);
+                        let q = drafts::queue_with_files(
+                            store, &gid, &channel, &text, reply_to, files,
+                        )?;
+                        let done =
+                            drafts::flush_reporting(store, client, &id, &gid, &report).await?;
+                        Ok(sending(&done, &drafts::queued(store, &gid)?, Some(q.id)))
+                    };
+                    work.await.map_err(|e| problem(&name, e))
+                })
+                .await;
+            *lock(&self.going) = None;
+            if result.is_ok() {
+                let mut attached = lock(&self.attached);
+                for id in &ids {
+                    attached.remove(id);
+                }
+            }
+            result
         })
+    }
+
+    fn attachment_rules(&self) -> Call<'_, AttachmentRules> {
+        self.call(|client| async move {
+            let i = client.instance().await?;
+            Ok(AttachmentRules {
+                allowed: i.attachments,
+                max_bytes: i.limits.max_attachment_bytes,
+            })
+        })
+    }
+
+    fn choose_files(&self) -> Call<'_, Vec<String>> {
+        Box::pin(async move {
+            let shown = |p: &Path| p.display().to_string();
+            if let Some(files) = &self.files_answer {
+                return Ok(files.iter().map(|p| shown(p)).collect());
+            }
+            #[cfg(feature = "app")]
+            {
+                let picked = rfd::AsyncFileDialog::new()
+                    .set_title("Attach files")
+                    .pick_files()
+                    .await
+                    .unwrap_or_default();
+                Ok(picked.iter().map(|f| shown(f.path())).collect())
+            }
+            #[cfg(not(feature = "app"))]
+            {
+                Ok(Vec::new())
+            }
+        })
+    }
+
+    fn attach<'a>(&'a self, path: &'a str) -> Call<'a, Attached> {
+        let path = PathBuf::from(path);
+        Box::pin(async move {
+            let open = self.opened()?;
+            let name = path.file_name().map_or_else(
+                || "attachment".to_owned(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            // Refused here, before anything is encrypted, when the server
+            // says so. Offline, the server checks again when it's sent.
+            let rules = open.client.instance().await.ok();
+            if rules.as_ref().is_some_and(|r| !r.attachments) {
+                return Err(Problem::refused(
+                    codes::ATTACHMENTS_OFF,
+                    format!(
+                        "{} doesn't take attachments: its administrators keep sessions to writing.",
+                        open.name
+                    ),
+                ));
+            }
+            let read = {
+                let path = path.clone();
+                self.runtime
+                    .spawn_blocking(move || std::fs::read(path))
+                    .await
+                    .map_err(failed)?
+            };
+            let contents = read.map_err(|e| {
+                Problem::refused(
+                    codes::ATTACHMENT_UNREADABLE,
+                    format!("Couldn't read {name}: {e}."),
+                )
+            })?;
+            let size = contents.len() as u64;
+            if let Some(max) = rules.map(|r| r.limits.max_attachment_bytes)
+                && size > max
+            {
+                return Err(Problem::refused(
+                    codes::ATTACHMENT_TOO_LARGE,
+                    format!(
+                        "{name} is too large: {} takes files up to {}.",
+                        open.name,
+                        plait_ui::size(max)
+                    ),
+                ));
+            }
+            let id = Uuid::now_v7();
+            lock(&self.attached).insert(id, (name.clone(), contents));
+            Ok(Attached { id, name, size })
+        })
+    }
+
+    fn detach(&self, id: Uuid) {
+        lock(&self.attached).remove(&id);
+    }
+
+    fn files_going(&self) -> Option<FilesGoing> {
+        lock(&self.going).clone()
     }
 
     fn send_waiting<'a>(&'a self, id: &'a str) -> Call<'a, Sending> {
         let id = id.to_owned();
+        let going = self.going.clone();
         Box::pin(async move {
             let open = self.opened()?;
             let gid = session_gid(&id)?;
             let name = open.name.clone();
-            self.run(async move {
-                let _lock = open.exclusive().await;
-                let work = async {
-                    let (store, client) = (&open.store, &open.client);
-                    let done = drafts::flush(store, client, &id, &gid).await?;
-                    Ok(sending(&done, &drafts::queued(store, &gid)?, None))
-                };
-                work.await.map_err(|e| problem(&name, e))
-            })
-            .await
+            let result = self
+                .run(async move {
+                    let _lock = open.exclusive().await;
+                    let report = reporter(going);
+                    let work = async {
+                        let (store, client) = (&open.store, &open.client);
+                        // "Try again" sends a refused note again, too.
+                        drafts::retry(store, &gid)?;
+                        let done =
+                            drafts::flush_reporting(store, client, &id, &gid, &report).await?;
+                        Ok(sending(&done, &drafts::queued(store, &gid)?, None))
+                    };
+                    work.await.map_err(|e| problem(&name, e))
+                })
+                .await;
+            *lock(&self.going) = None;
+            result
         })
     }
 

@@ -28,7 +28,7 @@ mod mounted;
 mod sim;
 
 pub use mounted::Asked;
-pub use sim::{Acceptance, RequestState, Sim, SimServer};
+pub use sim::{Acceptance, Interrupt, RequestState, Sim, SimServer};
 
 /// How long a wait gives up after.
 const PATIENCE: Duration = Duration::from_secs(20);
@@ -983,6 +983,34 @@ impl Driver {
             target,
             "keydown",
             serde_json::to_value(data).expect("keyboard data"),
+        );
+        self.settle().await;
+    }
+
+    /// Drops files from the computer's file manager onto the element with
+    /// `id`, as the webview reports them: by path.
+    pub async fn drop_files(&mut self, id: &str, paths: &[&str]) {
+        let target = self.by_id(id);
+        let files = paths
+            .iter()
+            .map(|p| dioxus_html::SerializedFileData {
+                path: (*p).into(),
+                ..dioxus_html::SerializedFileData::empty()
+            })
+            .collect();
+        let data = dioxus_html::SerializedDragData {
+            mouse: Default::default(),
+            data_transfer: dioxus_html::SerializedDataTransfer {
+                items: Vec::new(),
+                files,
+                effect_allowed: "all".into(),
+                drop_effect: "copy".into(),
+            },
+        };
+        self.send(
+            target,
+            "drop",
+            serde_json::to_value(data).expect("drag data"),
         );
         self.settle().await;
     }

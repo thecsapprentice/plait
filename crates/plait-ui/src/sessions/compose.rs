@@ -9,13 +9,16 @@
 
 use std::rc::Rc;
 
-use dioxus::prelude::*;
+use dioxus::{html::HasFileData, prelude::*};
 use uuid::Uuid;
 
 use super::{live::Mirror, reload};
 use crate::{
     app::{Code, ProblemLine, use_ui},
-    backend::{Draft, NOTE_MAX, Problem, QueuedNote, Sending},
+    backend::{
+        Attached, AttachmentRules, Draft, FILES_MAX, FilesGoing, NOTE_MAX, Problem, QueuedNote,
+        Sending, codes,
+    },
     markdown::Markdown,
 };
 
@@ -48,6 +51,9 @@ const FOLLOW_JS: &str = r#"
     for (const kind of ['keyup', 'input', 'click']) document.addEventListener(kind, follow, true);
   }
 "#;
+
+/// How often the composer asks how a note's files are getting on.
+const PROGRESS_MS: u64 = 150;
 
 /// The command key's name here, for hints.
 fn command_key() -> &'static str {
@@ -167,6 +173,44 @@ pub fn Composer(
     let mut sending = use_signal(|| false);
     let mut said = use_signal(|| None::<Said>);
     let mut editor = use_signal(|| None::<Rc<MountedData>>);
+    // Files attached to this note (3g-3), what the server takes, and how
+    // they're getting on as the note goes.
+    let mut files = use_signal(Vec::<Attached>::new);
+    let mut attach_problem = use_signal(|| None::<Problem>);
+    let mut rules = use_signal(|| None::<AttachmentRules>);
+    let mut going = use_signal(|| None::<FilesGoing>);
+    let b = backend.clone();
+    use_hook(move || {
+        spawn(async move {
+            if let Ok(r) = b.attachment_rules().await {
+                rules.set(Some(r));
+            }
+        });
+    });
+    // Reads each file in turn; one the server wouldn't take is said, and
+    // the rest still come.
+    let b = backend.clone();
+    let add_files = use_callback(move |paths: Vec<String>| {
+        let b = b.clone();
+        spawn(async move {
+            for path in paths {
+                if files.peek().len() >= FILES_MAX {
+                    attach_problem.set(Some(Problem::refused(
+                        codes::MESSAGE_TOO_MANY_ATTACHMENTS,
+                        format!("A note carries at most {FILES_MAX} files."),
+                    )));
+                    break;
+                }
+                match b.attach(&path).await {
+                    Ok(a) => {
+                        attach_problem.set(None);
+                        files.write().push(a);
+                    }
+                    Err(p) => attach_problem.set(Some(p)),
+                }
+            }
+        });
+    });
     // After a shortcut remounts the text area: the selection to put back,
     // once the new one is in the page (finding 2).
     let mut reselect = use_signal(|| None::<(usize, usize)>);
@@ -232,21 +276,36 @@ pub fn Composer(
 
     let chars = text.read().chars().count();
     let over = chars > NOTE_MAX;
-    let empty = text.read().trim().is_empty();
+    let empty = text.read().trim().is_empty() && files.read().is_empty();
 
     let send = {
         let (b, sid, ch) = (backend.clone(), id.clone(), channel.clone());
         move || {
             let t = text.peek().clone();
-            if t.trim().is_empty() || t.chars().count() > NOTE_MAX || *sending.peek() {
+            let ids: Vec<Uuid> = files.peek().iter().map(|f| f.id).collect();
+            if (t.trim().is_empty() && ids.is_empty())
+                || t.chars().count() > NOTE_MAX
+                || *sending.peek()
+            {
                 return;
             }
             let reply = *answering.peek();
             let (b, sid, ch) = (b.clone(), sid.clone(), ch.clone());
             sending.set(true);
             said.set(None);
+            // How the files are getting on, read a few times a second.
+            if !ids.is_empty() {
+                let b = b.clone();
+                spawn(async move {
+                    while *sending.peek() {
+                        going.set(b.files_going());
+                        b.sleep(PROGRESS_MS).await;
+                    }
+                    going.set(None);
+                });
+            }
             spawn(async move {
-                match b.send_note(&sid, &ch, &t, reply).await {
+                match b.send_note(&sid, &ch, &t, reply, &ids).await {
                     // It's in the outbox now, whatever came of it: the editor
                     // starts again.
                     Ok(how) => {
@@ -256,6 +315,8 @@ pub fn Composer(
                         dirty.set(false);
                         kept.set(false);
                         answering.set(None);
+                        files.set(Vec::new());
+                        attach_problem.set(None);
                         *generation.write() += 1;
                         *here.write() += 1;
                         said.set(Some(match how {
@@ -268,6 +329,7 @@ pub fn Composer(
                     Err(p) => said.set(Some(Said::Failed(p))),
                 }
                 sending.set(false);
+                going.set(None);
             });
         }
     };
@@ -357,8 +419,25 @@ pub fn Composer(
     let editor_id = "note-editor";
     let limit = limit_line(chars);
     let mut send_now = send.clone();
+    let b = backend.clone();
+    let pick_files = move |_| {
+        let b = b.clone();
+        spawn(async move {
+            match b.choose_files().await {
+                Ok(paths) => add_files.call(paths),
+                Err(p) => attach_problem.set(Some(p)),
+            }
+        });
+    };
+    let attach_allowed = rules().is_none_or(|r| r.allowed);
     rsx! {
         section { class: "composer", aria_label: "Write in {label}",
+            // Files dropped on the editor are attached, as a picked one is.
+            ondragover: move |e| e.prevent_default(),
+            ondrop: move |e| {
+                e.prevent_default();
+                add_files.call(e.files().iter().map(|f| f.path().display().to_string()).collect());
+            },
             if focused {
                 p { class: "focus-where", "Writing in {label} with {with}" }
             }
@@ -420,8 +499,47 @@ pub fn Composer(
                     div { class: "preview pitch", aria_label: "Preview", Markdown { source: preview() } }
                 }
             }
+            if !files().is_empty() {
+                ul { class: "attached-files", aria_label: "Files attached to this note",
+                    for f in files() {
+                        li { key: "{f.id}",
+                            {plait_board_ui::art::icon(plait_board_ui::icons::Icon::Attach, "file-icon")}
+                            span { class: "file-name", "{f.name}, {crate::storage::size(f.size)}" }
+                            button {
+                                class: "quiet",
+                                disabled: sending(),
+                                aria_label: "Remove {f.name}",
+                                onclick: {
+                                    let (b, id) = (backend.clone(), f.id);
+                                    move |_| {
+                                        b.detach(id);
+                                        files.write().retain(|x| x.id != id);
+                                    }
+                                },
+                                "Remove"
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(p) = attach_problem() {
+                ProblemLine { problem: p }
+            }
             div { class: "composer-bar",
                 div { class: "composer-tools",
+                    if attach_allowed {
+                        button {
+                            class: "quiet",
+                            id: "attach-files",
+                            disabled: sending(),
+                            title: "Or drop files here",
+                            onclick: pick_files,
+                            {plait_board_ui::art::icon(plait_board_ui::icons::Icon::Attach, "file-icon")}
+                            "Attach files…"
+                        }
+                    } else {
+                        span { class: "hint", "This server doesn't take attachments." }
+                    }
                     button {
                         class: "quiet",
                         id: "writing-focus",
@@ -464,6 +582,13 @@ pub fn Composer(
                     onclick: move |_| send_now(),
                     if sending() { "Sending…" } else { "Send" }
                 }
+            }
+            match going() {
+                Some(FilesGoing::Uploading { n, of, name }) => rsx! {
+                    p { class: "hint", role: "status", "Uploading {name} ({n} of {of})…" }
+                },
+                Some(FilesGoing::Sending) => rsx! { p { class: "hint", role: "status", "Sending the note…" } },
+                None => rsx! {},
             }
             match said() {
                 Some(Said::Sent) => rsx! { p { class: "hint", role: "status", "Sent." } },
@@ -570,6 +695,9 @@ pub fn WaitingNote(id: String, note: QueuedNote, here: Signal<u64>) -> Element {
                 }
             } else {
                 div { class: "pitch", Markdown { source: note.text.clone() } }
+                if !note.files.is_empty() {
+                    p { class: "hint", "With {files_line(&note.files)}" }
+                }
                 div { class: "actions",
                     button { class: "secondary", onclick: retry, "Try again" }
                     button { class: "quiet", onclick: move |_| changing.set(true), "Change" }
@@ -581,6 +709,16 @@ pub fn WaitingNote(id: String, note: QueuedNote, here: Signal<u64>) -> Element {
             }
         }
     }
+}
+
+/// "1 file: cove.png" or "2 files: cove.png, notes.txt".
+fn files_line(names: &[String]) -> String {
+    let n = names.len();
+    format!(
+        "{n} file{}: {}",
+        if n == 1 { "" } else { "s" },
+        names.join(", ")
+    )
 }
 
 #[cfg(test)]

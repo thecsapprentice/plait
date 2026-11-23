@@ -119,6 +119,10 @@ registry! {
     ATTACHMENT_CHECK_FAILED = 3350,
     /// That attachment is on another server (federation comes later).
     ATTACHMENT_ELSEWHERE = 3351,
+    /// A file is larger than this server takes, so it wasn't attached.
+    ATTACHMENT_TOO_LARGE = 3352,
+    /// A file couldn't be read on this computer, so it wasn't attached.
+    ATTACHMENT_UNREADABLE = 3353,
     /// A backup failed a check on this computer.
     BACKUP_CHECK_FAILED = 3450,
     /// A backup couldn't be decrypted or is damaged.

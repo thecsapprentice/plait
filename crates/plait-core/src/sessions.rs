@@ -1459,11 +1459,59 @@ pub const MAX_FILES: usize = 10;
 
 /// Sends a message: each file is encrypted and uploaded first, then the
 /// note carrying their keys. Returns its place in the log.
+/// How a message with files is getting on (`post_reporting`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Posting {
+    /// Encrypting and uploading file `n` (from 1) of `of`.
+    Uploading { n: usize, of: usize, name: String },
+    /// The server has file `n` (from 1). Kept, a retry needn't upload it
+    /// again (`post_resuming`).
+    Accepted { n: usize, file: Box<Accepted> },
+    /// The files are up; the message itself is going.
+    Sending,
+}
+
+/// A file the server has taken for a message not sent yet: its upload and
+/// how the message will carry it (#125).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Accepted {
+    pub blob: Uuid,
+    pub attachment: attachments::Attachment,
+}
+
 pub async fn post(
     store: &Store,
     client: &Client,
     id: &str,
     draft: Draft<'_>,
+) -> Result<u64, CoreError> {
+    post_reporting(store, client, id, draft, &|_| {}).await
+}
+
+/// As [`post`], calling `report` as each file goes up and as the message
+/// follows them.
+pub async fn post_reporting(
+    store: &Store,
+    client: &Client,
+    id: &str,
+    draft: Draft<'_>,
+    report: &(dyn Fn(Posting) + Send + Sync),
+) -> Result<u64, CoreError> {
+    post_resuming(store, client, id, draft, Vec::new(), report).await
+}
+
+/// As [`post_reporting`], when the server already has the draft's first
+/// files from an earlier try (`done`, in order, as `Posting::Accepted`
+/// reported them): only the rest are uploaded. If the server has since
+/// cleared one away, sending is refused with `ATTACHMENT_NOT_YOURS`, and
+/// the caller tries again with none done.
+pub async fn post_resuming(
+    store: &Store,
+    client: &Client,
+    id: &str,
+    draft: Draft<'_>,
+    done: Vec<Accepted>,
+    report: &(dyn Fn(Posting) + Send + Sync),
 ) -> Result<u64, CoreError> {
     let text = if draft.files.is_empty() {
         check_text(draft.text)?
@@ -1484,9 +1532,11 @@ pub async fn post(
         ),
         None => None,
     };
-    let mut attachments = Vec::new();
-    let mut blobs = Vec::new();
-    if !draft.files.is_empty() {
+    let mut done = done;
+    done.truncate(draft.files.len());
+    let mut attachments: Vec<_> = done.iter().map(|a| a.attachment.clone()).collect();
+    let mut blobs: Vec<_> = done.iter().map(|a| a.blob).collect();
+    if draft.files.len() > done.len() {
         let instance = client.instance().await?;
         if !instance.attachments {
             return Err(err(
@@ -1494,18 +1544,35 @@ pub async fn post(
             ));
         }
         let max = instance.limits.max_attachment_bytes;
-        for (name, contents) in &draft.files {
+        let of = draft.files.len();
+        for (i, (name, contents)) in draft.files.iter().enumerate().skip(done.len()) {
+            report(Posting::Uploading {
+                n: i + 1,
+                of,
+                name: attachments::safe_name(name),
+            });
             let sealed = attachments::seal(contents, max)?;
             let up = client
                 .upload_blob(&r.session.id, sealed.blob.clone())
                 .await?;
-            attachments.push(sealed.attachment(
+            let attachment = sealed.attachment(
                 &attachments::safe_name(name),
                 client.blob_url(up.id)?,
                 up.token,
-            ));
+            );
+            report(Posting::Accepted {
+                n: i + 1,
+                file: Box::new(Accepted {
+                    blob: up.id,
+                    attachment: attachment.clone(),
+                }),
+            });
+            attachments.push(attachment);
             blobs.push(up.id);
         }
+    }
+    if !blobs.is_empty() {
+        report(Posting::Sending);
     }
     let seq = send(store, client, &r, &blobs, |hlc, n| {
         let note = Activity::create(text, channel, hlc, n).with_attachments(attachments.clone());

@@ -77,6 +77,8 @@ pub struct TestServer {
     admin_url: String,
     db_name: String,
     task: JoinHandle<()>,
+    /// While set, every request answers 502 (`set_away`).
+    away: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl TestServer {
@@ -131,7 +133,12 @@ impl TestServer {
 
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
         let addr = listener.local_addr()?;
-        let mut app = router(state);
+        let away = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let gate = away.clone();
+        let mut app = router(state).layer(axum::middleware::from_fn(move |req, next| {
+            let gate = gate.clone();
+            async move { gated(&gate, req, next).await }
+        }));
         if let Some(recording) = recording {
             app = app.layer(axum::middleware::from_fn(move |req, next| {
                 record(recording.clone(), req, next)
@@ -148,7 +155,15 @@ impl TestServer {
             admin_url,
             db_name,
             task,
+            away,
         }))
+    }
+
+    /// Takes the server away, or brings it back: while away, every request
+    /// answers 502, as a proxy does with nothing behind it, and its data
+    /// stays as it was.
+    pub fn set_away(&self, away: bool) {
+        self.away.store(away, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn url(&self) -> String {
@@ -227,6 +242,18 @@ impl TestServer {
 }
 
 pub const TEST_PASSWORD: &str = "correct horse battery staple";
+
+async fn gated(
+    away: &std::sync::atomic::AtomicBool,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if away.load(std::sync::atomic::Ordering::SeqCst) {
+        return axum::http::StatusCode::BAD_GATEWAY.into_response();
+    }
+    next.run(req).await
+}
 
 async fn axum_serve(listener: tokio::net::TcpListener, app: axum::Router) -> Result<()> {
     axum::serve(listener, app).await?;
