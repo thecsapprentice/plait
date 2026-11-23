@@ -305,10 +305,13 @@ fn queued_note(q: drafts::Queued) -> QueuedNote {
 /// Keeps `going` up to date as a note's files go, for `files_going`.
 fn reporter(going: Arc<Mutex<Option<FilesGoing>>>) -> impl Fn(sessions::Posting) + Send + Sync {
     move |p| {
-        *lock(&going) = Some(match p {
+        let now = match p {
             sessions::Posting::Uploading { n, of, name } => FilesGoing::Uploading { n, of, name },
             sessions::Posting::Sending => FilesGoing::Sending,
-        });
+            // Kept by core for a retry; nothing new to say.
+            sessions::Posting::Accepted { .. } => return,
+        };
+        *lock(&going) = Some(now);
     }
 }
 
@@ -2054,6 +2057,8 @@ impl Backend for NativeBackend {
                     let report = reporter(going);
                     let work = async {
                         let (store, client) = (&open.store, &open.client);
+                        // "Try again" sends a refused note again, too.
+                        drafts::retry(store, &gid)?;
                         let done =
                             drafts::flush_reporting(store, client, &id, &gid, &report).await?;
                         Ok(sending(&done, &drafts::queued(store, &gid)?, None))

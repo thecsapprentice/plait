@@ -485,7 +485,10 @@ async fn a_queued_notes_files_go_with_it_and_arrive_intact() {
     .unwrap();
     let seen = std::sync::Mutex::new(Vec::new());
     let done = drafts::flush_reporting(&laptop, &alice_c, &id, &gid, &|p| {
-        seen.lock().unwrap().push(p);
+        // Each file the server takes is reported too, for a retry (#125).
+        if !matches!(p, sessions::Posting::Accepted { .. }) {
+            seen.lock().unwrap().push(p);
+        }
     })
     .await
     .unwrap();

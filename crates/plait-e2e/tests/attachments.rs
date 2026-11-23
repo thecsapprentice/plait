@@ -388,3 +388,205 @@ async fn logins_and_administrators_see_storage_but_no_content() {
     assert!(one.sessions[0].persona.is_none() && one.sessions[0].partner.is_none());
     server.stop().await.unwrap();
 }
+
+// ---- Sending stopped partway (#125) ----------------------------------------------
+
+/// How many uploads the server holds, carried or not.
+async fn uploads_held(server: &TestServer) -> i64 {
+    let db = server.db().await.unwrap();
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM blobs")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    db.close().await;
+    n
+}
+
+/// Sets the administrators' attachments switch, from inside a report
+/// (which can't wait): the test's runtime has threads to spare for it.
+fn switch_attachments(boss: &Client, on: bool) {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            boss.admin_update_settings(&plait_proto::board::UpdateServerSettings {
+                attachments: Some(on),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        });
+    });
+}
+
+/// The other writer's copy of the note `text`: its files, by name.
+async fn files_of(bob: &Store, bob_c: &Client, id: &str, text: &str) -> Vec<(String, Vec<u8>)> {
+    let read = sessions::read(bob, bob_c, id).await.unwrap();
+    let note = read
+        .messages
+        .iter()
+        .find(|m| m.content == text)
+        .expect("arrived");
+    note.attachments
+        .iter()
+        .map(|a| {
+            (
+                a.name.clone(),
+                sessions::file(bob, &a.url).unwrap().unwrap().to_vec(),
+            )
+        })
+        .collect()
+}
+
+fn two_files() -> Vec<(String, Vec<u8>)> {
+    vec![
+        ("cove.png".into(), vec![1; 5000]),
+        ("notes.txt".into(), vec![2; 6000]),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_server_gone_partway_through_takes_only_the_rest_on_retry() {
+    use plait_core::drafts;
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (id, (alice, alice_c, _), (bob, bob_c, _)) = pair(&server).await;
+    let gid = plait_proto::keys::unb64(&id).unwrap();
+    let q =
+        drafts::queue_with_files(&alice, &gid, "story", "Two files.", None, two_files()).unwrap();
+    // The server goes away just as the second file starts up.
+    let done = drafts::flush_reporting(&alice, &alice_c, &id, &gid, &|p| {
+        if matches!(p, sessions::Posting::Uploading { n: 2, .. }) {
+            server.set_away(true);
+        }
+    })
+    .await
+    .unwrap();
+    assert!(done.offline, "waits, as offline");
+    assert_eq!(drafts::queued(&alice, &gid).unwrap().len(), 1);
+    assert_eq!(
+        drafts::accepted(&alice, &gid, &q).unwrap().len(),
+        1,
+        "the first is kept"
+    );
+    assert_eq!(uploads_held(&server).await, 1);
+
+    server.set_away(false);
+    let seen = std::sync::Mutex::new(Vec::new());
+    let done = drafts::flush_reporting(&alice, &alice_c, &id, &gid, &|p| {
+        if let sessions::Posting::Uploading { n, .. } = p {
+            seen.lock().unwrap().push(n);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(done.sent.len(), 1);
+    assert_eq!(seen.into_inner().unwrap(), [2], "only the second goes up");
+    assert_eq!(
+        uploads_held(&server).await,
+        2,
+        "one copy of each, none spare"
+    );
+    assert!(
+        drafts::accepted(&alice, &gid, &q).unwrap().is_empty(),
+        "gone with the note"
+    );
+    assert_eq!(files_of(&bob, &bob_c, &id, "Two files.").await, two_files());
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachments_switched_off_between_files_refuse_then_resume() {
+    use plait_core::drafts;
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (id, (alice, alice_c, _), (bob, bob_c, _)) = pair(&server).await;
+    let boss = server.admin_account("boss").await.unwrap();
+    let gid = plait_proto::keys::unb64(&id).unwrap();
+    let q =
+        drafts::queue_with_files(&alice, &gid, "story", "Two files.", None, two_files()).unwrap();
+    let done = drafts::flush_reporting(&alice, &alice_c, &id, &gid, &|p| {
+        if matches!(p, sessions::Posting::Uploading { n: 2, .. }) {
+            switch_attachments(&boss, false);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(done.refused, Some(q.id));
+    let waiting = drafts::queued(&alice, &gid).unwrap();
+    let refused = waiting[0].refused.as_ref().expect("refused, said why");
+    assert_eq!(refused.code, plait_proto::codes::ATTACHMENTS_OFF.0);
+    assert_eq!(
+        waiting[0].files,
+        ["cove.png", "notes.txt"],
+        "it keeps its files"
+    );
+    assert_eq!(uploads_held(&server).await, 1);
+
+    // Switched back on, "Try again" sends it, the first file not twice.
+    switch_attachments(&boss, true);
+    drafts::retry(&alice, &gid).unwrap();
+    let done = drafts::flush(&alice, &alice_c, &id, &gid).await.unwrap();
+    assert_eq!(done.sent.len(), 1);
+    assert_eq!(uploads_held(&server).await, 2);
+    assert_eq!(files_of(&bob, &bob_c, &id, "Two files.").await, two_files());
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn attachments_switched_off_once_a_file_is_up_still_let_its_note_go() {
+    use plait_core::drafts;
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (id, (alice, alice_c, _), (bob, bob_c, _)) = pair(&server).await;
+    let boss = server.admin_account("boss").await.unwrap();
+    let gid = plait_proto::keys::unb64(&id).unwrap();
+    let one = vec![("notes.txt".to_owned(), vec![3; 7000])];
+    drafts::queue_with_files(&alice, &gid, "story", "One file.", None, one.clone()).unwrap();
+    // The upload was taken before the switch: the note that follows isn't
+    // checked against it, so it goes.
+    let done = drafts::flush_reporting(&alice, &alice_c, &id, &gid, &|p| {
+        if matches!(p, sessions::Posting::Accepted { n: 1, .. }) {
+            switch_attachments(&boss, false);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(done.sent.len(), 1);
+    assert_eq!(files_of(&bob, &bob_c, &id, "One file.").await, one);
+    server.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_kept_upload_the_server_cleared_away_is_sent_again() {
+    use plait_core::drafts;
+    let Some(server) = TestServer::start().await.unwrap() else {
+        return;
+    };
+    let (id, (alice, alice_c, _), (bob, bob_c, _)) = pair(&server).await;
+    let gid = plait_proto::keys::unb64(&id).unwrap();
+    let q =
+        drafts::queue_with_files(&alice, &gid, "story", "Two files.", None, two_files()).unwrap();
+    drafts::flush_reporting(&alice, &alice_c, &id, &gid, &|p| {
+        if matches!(p, sessions::Posting::Uploading { n: 2, .. }) {
+            server.set_away(true);
+        }
+    })
+    .await
+    .unwrap();
+    server.set_away(false);
+    // A day on, the server's clean-up took the upload no message carried.
+    let db = server.db().await.unwrap();
+    sqlx::query("DELETE FROM blobs").execute(&db).await.unwrap();
+    db.close().await;
+    assert_eq!(drafts::accepted(&alice, &gid, &q).unwrap().len(), 1);
+    let done = drafts::flush(&alice, &alice_c, &id, &gid).await.unwrap();
+    assert_eq!(done.sent.len(), 1, "started afresh and sent");
+    // The second file went up once before the refusal showed the first was
+    // gone, then both afresh: that one spare goes in the day's clean-up.
+    // Checking each kept upload first would fetch it whole every retry.
+    assert_eq!(uploads_held(&server).await, 3);
+    assert_eq!(files_of(&bob, &bob_c, &id, "Two files.").await, two_files());
+    server.stop().await.unwrap();
+}
