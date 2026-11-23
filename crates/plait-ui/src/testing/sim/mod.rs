@@ -5,7 +5,14 @@
 //! network outage would. It follows `plait-gui`'s `NativeBackend` closely;
 //! the end-to-end tests check the real one against a real server.
 
-use std::{cell::RefCell, collections::HashMap, future::Future, pin::Pin, rc::Rc, time::Duration};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    future::Future,
+    pin::Pin,
+    rc::Rc,
+    time::Duration,
+};
 
 use plait_proto::board::Maturity;
 use uuid::Uuid;
@@ -135,6 +142,12 @@ struct State {
     /// open then: `standing` fails until it's opened.
     unopened: Option<Uuid>,
     settings: AppSettings,
+    /// What the system's folder dialog answers (`folder_picks`).
+    folder_pick: Option<String>,
+    /// Files saved on this computer, by path.
+    disk: std::collections::BTreeMap<String, Vec<u8>>,
+    /// Attachments this computer doesn't have, by key.
+    missing_here: HashSet<String>,
 }
 
 /// The simulated world: servers out there and this computer's app state.
@@ -176,6 +189,9 @@ impl Sim {
             requests_held: None,
             replies_held: Default::default(),
             unopened: None,
+            folder_pick: None,
+            disk: Default::default(),
+            missing_here: HashSet::new(),
             settings: AppSettings {
                 theme: Theme::System,
                 text_size: 100,
@@ -1089,6 +1105,22 @@ impl Backend for Sim {
 
     fn restore_note<'a>(&'a self, id: &'a str, seq: u64) -> Call<'a, ()> {
         now(self.sim_change_note(id, seq, Change::Restore))
+    }
+
+    fn file_src(&self, file: &crate::backend::NoteFile) -> String {
+        format!("sim-file:{}", file.key)
+    }
+
+    fn choose_folder(&self) -> Call<'_, Option<String>> {
+        now(Ok(self.0.borrow().folder_pick.clone()))
+    }
+
+    fn save_files<'a>(
+        &'a self,
+        files: &'a [crate::backend::NoteFile],
+        folder: &'a str,
+    ) -> Call<'a, Vec<String>> {
+        now(self.sim_save_files(files, folder))
     }
 
     fn name_channel<'a>(

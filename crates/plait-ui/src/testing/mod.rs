@@ -588,6 +588,14 @@ impl Driver {
     }
 
     /// Whether any element with this tag is in the window (`script`, say).
+    /// The address of the image whose alt text is `alt`, if one is shown.
+    pub fn image_src(&self, alt: &str) -> Option<String> {
+        self.doc.attached().into_iter().find_map(|n| {
+            (self.doc.tag(n) == Some("img") && self.doc.attr(n, "alt") == Some(alt))
+                .then(|| self.doc.attr(n, "src").unwrap_or_default().to_owned())
+        })
+    }
+
     pub fn has_element(&self, tag: &str) -> bool {
         self.doc
             .attached()

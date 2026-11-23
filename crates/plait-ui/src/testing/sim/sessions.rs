@@ -16,8 +16,8 @@ use uuid::Uuid;
 
 use super::{Sim, SimServer, refused};
 use crate::backend::{
-    ChannelView, Draft, NOTE_MAX, Note, NoteVersion, Problem, QueuedNote, SafetyNumbers, Sending,
-    SessionStanding, SessionSummary, SessionView, Verification, Writer, codes,
+    ChannelView, Draft, NOTE_MAX, Note, NoteFile, NoteVersion, Problem, QueuedNote, SafetyNumbers,
+    Sending, SessionStanding, SessionSummary, SessionView, Verification, Writer, codes,
 };
 
 /// The channels every session has.
@@ -29,6 +29,44 @@ const QUOTA_BYTES: u64 = 500 * 1024 * 1024;
 /// The device group's log, fixed here.
 const DEVICE_SYNC_BYTES: u64 = 24 * 1024;
 
+/// An upload's size on the server: the ciphertext (16 bytes of tag more)
+/// padded to a power of two from 4 KiB, as 2i buckets it.
+fn padded(size: u64) -> u64 {
+    (size + 16).next_power_of_two().max(4096)
+}
+
+/// As `plait_core::attachments::media_type`: a label from the file name's
+/// extension; nothing checks it.
+fn media_type(name: &str) -> &'static str {
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("pdf") => "application/pdf",
+        Some("txt") => "text/plain",
+        Some("md") => "text/markdown",
+        _ => "application/octet-stream",
+    }
+}
+
+/// As `plait_core::attachments::safe_name`: the last path part, without
+/// control characters or colons, never empty.
+fn safe_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = base
+        .chars()
+        .map(|c| if c.is_control() || c == ':' { '_' } else { c })
+        .collect();
+    let cleaned = cleaned.trim_matches(|c| c == '.' || c == ' ').to_owned();
+    if cleaned.is_empty() {
+        "attachment".into()
+    } else {
+        cleaned
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct SimNote {
     seq: u64,
@@ -39,6 +77,17 @@ pub(super) struct SimNote {
     /// `None` where it was deleted. The last decides, as in `history`.
     versions: Vec<(Option<String>, OffsetDateTime)>,
     reply_to: Option<u64>,
+    /// Its attachments, as sent.
+    files: Vec<SimFile>,
+}
+
+/// An attachment on a note.
+#[derive(Debug, Clone)]
+pub(super) struct SimFile {
+    key: String,
+    name: String,
+    media_type: String,
+    bytes: Vec<u8>,
 }
 
 impl SimNote {
@@ -157,6 +206,7 @@ impl SimSession {
             channel: channel.to_owned(),
             versions: vec![(Some(text.to_owned()), at)],
             reply_to,
+            files: Vec::new(),
         });
         self.seq
     }
@@ -297,6 +347,122 @@ impl Sim {
         });
         self.live();
         seq
+    }
+
+    /// As `write_as`, with files attached: each a name and its contents.
+    /// They count in the session's storage, against `handle`'s quota.
+    pub fn write_with_files(
+        &self,
+        domain: &str,
+        session: &str,
+        handle: &str,
+        text: &str,
+        files: &[(&str, &[u8])],
+    ) -> u64 {
+        let login = self.login_of(domain, handle);
+        let seq = self.server(domain, |s| {
+            let session = s.session_mut(session);
+            let seq = session.write(handle, "story", text, None);
+            for (name, bytes) in files {
+                let n = session.files.len();
+                let key = format!(
+                    "https://{domain}/api/v1/blobs/{session_id}-{n}",
+                    session_id = session.id
+                );
+                session
+                    .files
+                    .push((login.clone(), padded(bytes.len() as u64)));
+                session.note_mut(seq).files.push(SimFile {
+                    key,
+                    name: (*name).to_owned(),
+                    media_type: media_type(name).to_owned(),
+                    bytes: bytes.to_vec(),
+                });
+            }
+            seq
+        });
+        self.live();
+        seq
+    }
+
+    /// Note `seq`'s files aren't on this computer (a device linked later,
+    /// say): it lists them but can't show or save them.
+    pub fn files_missing_here(&self, domain: &str, session: &str, seq: u64) {
+        let keys: Vec<String> = self.server(domain, |s| {
+            s.session_mut(session)
+                .note_mut(seq)
+                .files
+                .iter()
+                .map(|f| f.key.clone())
+                .collect()
+        });
+        self.0.borrow_mut().missing_here.extend(keys);
+    }
+
+    /// What the system's folder dialog answers from now: a folder, or
+    /// `None` as if the writer cancelled.
+    pub fn folder_picks(&self, folder: Option<&str>) {
+        self.0.borrow_mut().folder_pick = folder.map(str::to_owned);
+    }
+
+    /// A file already on this computer, at `path`.
+    pub fn put_on_disk(&self, path: &str, bytes: &[u8]) {
+        self.0
+            .borrow_mut()
+            .disk
+            .insert(path.to_owned(), bytes.to_vec());
+    }
+
+    /// The files saved on this computer, by path.
+    pub fn on_disk(&self) -> Vec<(String, Vec<u8>)> {
+        self.0
+            .borrow()
+            .disk
+            .iter()
+            .map(|(p, b)| (p.clone(), b.clone()))
+            .collect()
+    }
+
+    /// Saves as `plait_core::attachments::save_to` does: under a safe name,
+    /// a number in front until it's free.
+    pub(super) fn sim_save_files(
+        &self,
+        files: &[NoteFile],
+        folder: &str,
+    ) -> Result<Vec<String>, Problem> {
+        let mut saved = Vec::new();
+        for f in files {
+            let bytes = {
+                let st = self.0.borrow();
+                if st.missing_here.contains(&f.key) {
+                    continue;
+                }
+                st.servers
+                    .values()
+                    .flat_map(|s| &s.sessions.all)
+                    .flat_map(|s| &s.notes)
+                    .flat_map(|n| &n.files)
+                    .find(|x| x.key == f.key)
+                    .map(|x| x.bytes.clone())
+            };
+            let Some(bytes) = bytes else { continue };
+            let name = safe_name(&f.name);
+            let mut n = 0;
+            let path = loop {
+                let p = if n == 0 {
+                    format!("{folder}/{name}")
+                } else {
+                    format!("{folder}/{n}-{name}")
+                };
+                if !self.0.borrow().disk.contains_key(&p) {
+                    break p;
+                }
+                n += 1;
+            };
+            self.0.borrow_mut().disk.insert(path.clone(), bytes);
+            saved.push(path);
+        }
+        Ok(saved)
     }
 
     /// As `write_as`, answering note `to`.
@@ -525,7 +691,17 @@ impl Sim {
                 edited: n.versions.len() > 1,
                 reply_to: n.reply_to,
                 at: n.at(),
-                attachments: 0,
+                files: n
+                    .files
+                    .iter()
+                    .map(|f| NoteFile {
+                        key: f.key.clone(),
+                        name: f.name.clone(),
+                        size: f.bytes.len() as u64,
+                        media_type: f.media_type.clone(),
+                        here: !self.0.borrow().missing_here.contains(&f.key),
+                    })
+                    .collect(),
             })
             .collect();
         let here = self.sessions_here();

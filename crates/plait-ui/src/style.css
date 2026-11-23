@@ -248,6 +248,26 @@ fieldset > .hint { margin-bottom: var(--space-3); }
 .item p { margin: var(--space-1) 0 0; }
 .item .actions { margin-top: var(--space-2); }
 
+/* ---- A note's files (3g-2) ---- */
+.note-files { margin-top: var(--space-2); }
+.note-images { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.note-image { margin: 0; max-width: 100%; }
+.note-image .image-open { display: block; padding: 0; border: 0; background: none; cursor: zoom-in; max-width: 100%; }
+/* The frame is the image's own, so a tall or narrow picture leaves only
+   page behind it, never an empty box. */
+.note-image img { display: block; max-width: min(100%, 28rem); max-height: 18rem; width: auto; height: auto; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
+.note-image .image-open:focus-visible { outline: none; }
+.note-image .image-open:focus-visible img { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note-image figcaption { display: flex; gap: var(--space-2); align-items: baseline; flex-wrap: wrap; margin-top: var(--space-1); color: var(--muted); font-size: var(--text-sm); }
+.file-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.file-list li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-1) var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); max-width: var(--width-read); }
+.file-list .file-icon { width: 1.1rem; height: 1.1rem; flex: none; color: var(--muted); }
+.file-list .file-name { flex: 1; min-width: 10rem; overflow-wrap: anywhere; }
+/* The larger view: the image across the window, its bar beneath. */
+.lightbox { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-4); background: rgb(10 14 20 / 0.88); }
+.lightbox img { max-width: 100%; max-height: calc(100vh - 6rem); object-fit: contain; border-radius: var(--radius-s); }
+.lightbox-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: center; color: #eef1f4; }
+
 /* ---- Storage (3g-1) ---- */
 .storage-quota { margin-top: 0; }
 .storage-quota .quota-line { margin: 0 0 var(--space-2); font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
